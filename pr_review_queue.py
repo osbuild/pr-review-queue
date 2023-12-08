@@ -93,7 +93,7 @@ def list_green_pull_requests(github_api, org, repo):
                 status = check_commit_status (repo, head["sha"], github_api)
                 print(f"  head: {head["sha"]}")
                 print(f"  ci status: {status}")
-                if pull_request_details["draft"] == "true":
+                if pull_request_details["draft"] == True:
                     print("  Pull request is a draft.")
 
                 if pull_request_details["mergeable"] == "true":
