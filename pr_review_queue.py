@@ -50,14 +50,6 @@ def check_commit_status(component, ref, github_api):
     return status.state
 
 
-def print_warnings(args):
-    """
-    Print out some warnings and notices if we're not in a standard
-    """
-    if args.dry_run:
-        print("This is only a dry run, so no hashes will be passed to a subsequent job.")
-
-
 def list_green_pull_requests(github_api, org, repo):
     """
     Get pull requests that match the following criteria:
@@ -112,11 +104,9 @@ def main():
     parser.add_argument("--github-token", help="Set a token for github.com", required=True)
     parser.add_argument("--org", help="Set an organisation on github.com", required=True)
     parser.add_argument("--repo", help="Set a repo in `--org` on github.com", required=True)
-    parser.add_argument("--dry-run", help="Don't trigger creating a merge request",
-                        default=False, action=argparse.BooleanOptionalAction)
+    #parser.add_argument("--dry-run", help="Don't send Slack notifications",
+    #                    default=False, action=argparse.BooleanOptionalAction)
     args = parser.parse_args()
-
-    print_warnings(args)
 
     github_api = GhApi(owner='osbuild', token=args.github_token)
     list_green_pull_requests(github_api, args.org, args.repo)
