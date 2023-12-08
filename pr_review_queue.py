@@ -88,7 +88,7 @@ def list_green_pull_requests(github_api, org, repo):
                 if pull_request_details["draft"] == True:
                     print("  Pull request is a draft.")
 
-                if pull_request_details["mergeable"] == "true":
+                if pull_request_details["mergeable"] == True:
                     print("  Pull request is mergeable.")
 
                 if pull_request_details["mergeable_state"] == "clean":
