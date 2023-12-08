@@ -79,22 +79,25 @@ def list_green_pull_requests(github_api, org, repo):
                 print("Couldn't get pull request...")
 
             if pull_request_details is not None:
-                print(f"* {pull_request.html_url}")
+                print(f"* {pull_request.html_url} (+{pull_request_details["additions"]}/-{pull_request_details["deletions"]})")
                 head = pull_request_details["head"]
 
                 status = check_commit_status (repo, head["sha"], github_api)
                 print(f"  head: {head["sha"]}")
                 print(f"  ci status: {status}")
+
                 if pull_request_details["draft"] == True:
                     print("  Pull request is a draft.")
-
                 if pull_request_details["mergeable"] == True:
                     print("  Pull request is mergeable.")
-
+                if pull_request_details["rebaseable"] == True:
+                    print("  Pull request is rebaseable.")
                 if pull_request_details["mergeable_state"] == "clean":
                     print("  Pull request is cleanly mergeable.")
                 elif pull_request_details["mergeable_state"] == "dirty":
                     print("  Pull request has merge conflicts.")
+                else:
+                    print(f"  Pull request's mergeable state is '{pull_request_details["mergeable_state"]}'.")
 
     else:
         print("Didn't get any pull requests.")
