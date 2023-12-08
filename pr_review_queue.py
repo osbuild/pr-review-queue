@@ -93,6 +93,8 @@ def list_green_pull_requests(github_api, org, repo):
 
                 if pull_request_details["mergeable_state"] == "clean":
                     print("  Pull request is cleanly mergeable.")
+                elif pull_request_details["mergeable_state"] == "dirty":
+                    print("  Pull request has merge conflicts.")
 
     else:
         print("Didn't get any pull requests.")
