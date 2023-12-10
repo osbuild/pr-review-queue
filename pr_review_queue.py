@@ -50,7 +50,14 @@ def check_commit_status(component, ref, github_api):
             for run in runs:
                 if run['status'] == "completed" and run['conclusion'] == "success":
                     successful_runs += 1
-            print(f"  CI status: {successful_runs}/{len(runs)} successful")
+            if successful_runs == len(runs):
+                status.state = f"success ({successful_runs}/{len(runs)})"
+                state = "🟢"
+            elif successful_runs < len(runs):
+                status.state = f"failure ({successful_runs}/{len(runs)})"
+                state = "🔴"
+            else:
+                print(f"Warning: something is terribly wrong: successful runs ({successful_runs}) should never be more than total runs ({len(runs)}).")
     else:
         state = status.state
     #print(f" * {ref} {state}")
@@ -81,21 +88,29 @@ def list_green_pull_requests(github_api, org, repo):
         for pull_request in pull_requests:
             # useful when iterating a whole organisation
             # repo = pull_request.repository_url.split('/')[-1]
+            is_draft = False
             try:
                 pull_request_details = github_api.pulls.get(owner=org, repo=repo, pull_number=pull_request["number"])
             except: # pylint: disable=bare-except
                 print("Couldn't get pull request...")
 
             if pull_request_details is not None:
-                print(f"* {pull_request.html_url} (+{pull_request_details["additions"]}/-{pull_request_details["deletions"]})")
                 head = pull_request_details["head"]
-                print(f"  head: {head["sha"]}")
-
-                status, state = check_commit_status (repo, head["sha"], github_api)
-                print(f"  Combined CI status: {status} {state}")
 
                 if pull_request_details["draft"] == True:
-                    print("  Pull request is a draft.")
+                    status = "draft"
+                    state = "⚪"
+                else:
+                    status, state = check_commit_status (repo, head["sha"], github_api)
+
+                print(f"* {pull_request.html_url} (+{pull_request_details["additions"]}/-{pull_request_details["deletions"]}) {state}")
+
+                print(f"  Status: {status}")
+                if status == "draft": # requirement: not a draft
+                    continue
+                elif "failure" in status or "pending" in status: # requirement: CI is a success
+                    continue
+
                 if pull_request_details["mergeable"] == True:
                     print("  Pull request is mergeable.")
                 if pull_request_details["rebaseable"] == True:
