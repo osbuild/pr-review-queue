@@ -76,9 +76,11 @@ def list_green_pull_requests(github_api, org, repo):
     if repo:
         print(f"Fetching pull requests from one repository: {org}/{repo}")
         query = (f"repo:{org}/{repo} type:pr is:open")
+        entire_org = False
     else:
         print(f"Fetching pull requests from an entire organisation: {org}")
         query = (f"org:{org} type:pr is:open")
+        entire_org = True
     res = None
 
     try:
@@ -91,14 +93,17 @@ def list_green_pull_requests(github_api, org, repo):
         print(f"{len(pull_requests)} pull requests retrieved.")
 
         for pull_request in pull_requests:
-            time.sleep(2) # avoid API blocking
-
-            if not repo: # necessary when iterating a whole organisation
+            if entire_org: # necessary when iterating an organisation
                 repo = pull_request.repository_url.split('/')[-1]
-            try:
-                pull_request_details = github_api.pulls.get(owner=org, repo=repo, pull_number=pull_request["number"])
-            except: # pylint: disable=bare-except
-                print("Couldn't get pull request...")
+            for attempt in range(3):
+                try:
+                    pull_request_details = github_api.pulls.get(owner=org, repo=repo, pull_number=pull_request["number"])
+                except: # pylint: disable=bare-except
+                    time.sleep(2) # avoid API blocking
+                else:
+                    break
+            else:
+                print(f"Tried {attempt} times to get details for {pull_request.html_url}. Skipping.")
 
             if pull_request_details is not None:
                 head = pull_request_details["head"]
