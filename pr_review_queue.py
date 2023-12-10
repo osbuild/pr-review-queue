@@ -73,7 +73,12 @@ def list_green_pull_requests(github_api, org, repo):
         3. No changes requested
         4. No merge conflicts
     """
-    query = (f"repo:{org}/{repo} type:pr is:open")
+    if repo:
+        print(f"Fetching pull requests from one repository: {org}/{repo}")
+        query = (f"repo:{org}/{repo} type:pr is:open")
+    else:
+        print(f"Fetching pull requests from an entire organisation: {org}")
+        query = (f"org:{org} type:pr is:open")
     res = None
 
     try:
@@ -86,9 +91,8 @@ def list_green_pull_requests(github_api, org, repo):
         print(f"{len(pull_requests)} pull requests retrieved.")
 
         for pull_request in pull_requests:
-            # useful when iterating a whole organisation
-            # repo = pull_request.repository_url.split('/')[-1]
-            is_draft = False
+            if not repo: # necessary when iterating a whole organisation
+                repo = pull_request.repository_url.split('/')[-1]
             try:
                 pull_request_details = github_api.pulls.get(owner=org, repo=repo, pull_number=pull_request["number"])
             except: # pylint: disable=bare-except
@@ -132,7 +136,7 @@ def main():
     parser = argparse.ArgumentParser(allow_abbrev=False)
     parser.add_argument("--github-token", help="Set a token for github.com", required=True)
     parser.add_argument("--org", help="Set an organisation on github.com", required=True)
-    parser.add_argument("--repo", help="Set a repo in `--org` on github.com", required=True)
+    parser.add_argument("--repo", help="Set a repo in `--org` on github.com", required=False)
     #parser.add_argument("--dry-run", help="Don't send Slack notifications",
     #                    default=False, action=argparse.BooleanOptionalAction)
     args = parser.parse_args()
