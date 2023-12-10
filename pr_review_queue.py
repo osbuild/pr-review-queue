@@ -106,9 +106,9 @@ def list_green_pull_requests(github_api, org, repo):
                 print(f"* {pull_request.html_url} (+{pull_request_details["additions"]}/-{pull_request_details["deletions"]}) {state}")
 
                 print(f"  Status: {status}")
-                if status == "draft": # requirement: not a draft
+                if status == "draft": # requirement 1: not a draft
                     continue
-                elif "failure" in status or "pending" in status: # requirement: CI is a success
+                elif "failure" in status or "pending" in status: # requirement 2: CI is a success
                     continue
 
                 if pull_request_details["mergeable"] == True:
@@ -118,7 +118,8 @@ def list_green_pull_requests(github_api, org, repo):
                 if pull_request_details["mergeable_state"] == "clean":
                     print("  Pull request is cleanly mergeable.")
                 elif pull_request_details["mergeable_state"] == "dirty":
-                    print("  Pull request has merge conflicts.")
+                    print("  Pull request has merge conflicts.") # requirement 4: no merge conflicts
+                    continue
                 else:
                     print(f"  Pull request's mergeable state is '{pull_request_details["mergeable_state"]}'.")
 
