@@ -36,18 +36,26 @@ def check_commit_status(component, ref, github_api):
     Check whether the commit to be deployed has passed the CI tests
     """
     status = github_api.repos.get_combined_status_for_ref(owner='osbuild',repo=component,ref=ref)
-    #status = github_api.repos.list_commit_statuses_for_ref(owner='osbuild',repo=component,ref=ref)
     if status.state == "success":
         state = "🟢"
     elif status.state == "failure":
         state = "🔴"
     elif status.state == "pending":
         state = "🟠"
+        single_status = github_api.repos.list_commit_statuses_for_ref(owner='osbuild',repo=component,ref=ref)
+        if single_status == []:
+            check_runs = github_api.checks.list_for_ref(owner='osbuild',repo=component,ref=ref, per_page=100)
+            runs = check_runs["check_runs"]
+            successful_runs = 0
+            for run in runs:
+                if run['status'] == "completed" and run['conclusion'] == "success":
+                    successful_runs += 1
+            print(f"  CI status: {successful_runs}/{len(runs)} successful")
     else:
         state = status.state
     #print(f" * {ref} {state}")
 
-    return status.state
+    return status.state, state
 
 
 def list_green_pull_requests(github_api, org, repo):
@@ -81,10 +89,10 @@ def list_green_pull_requests(github_api, org, repo):
             if pull_request_details is not None:
                 print(f"* {pull_request.html_url} (+{pull_request_details["additions"]}/-{pull_request_details["deletions"]})")
                 head = pull_request_details["head"]
-
-                status = check_commit_status (repo, head["sha"], github_api)
                 print(f"  head: {head["sha"]}")
-                print(f"  ci status: {status}")
+
+                status, state = check_commit_status (repo, head["sha"], github_api)
+                print(f"  Combined CI status: {status} {state}")
 
                 if pull_request_details["draft"] == True:
                     print("  Pull request is a draft.")
