@@ -6,7 +6,7 @@ Small bot to create a pull request review queue on Slack
 
 import argparse
 import sys
-import datetime
+import time
 from ghapi.all import GhApi
 
 
@@ -91,6 +91,8 @@ def list_green_pull_requests(github_api, org, repo):
         print(f"{len(pull_requests)} pull requests retrieved.")
 
         for pull_request in pull_requests:
+            time.sleep(2) # avoid API blocking
+
             if not repo: # necessary when iterating a whole organisation
                 repo = pull_request.repository_url.split('/')[-1]
             try:
