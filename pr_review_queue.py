@@ -23,8 +23,11 @@ def slack_notify(message: str, dry_run: bool):
     github_url = f"{github_server_url}/{github_repository}/actions/runs/{github_run_id}"
 
     print(message)
+    if dry_run:
+        print("This is just a dry run, not sending Slack notifications.")
+        sys.exit(0)
 
-    if not dry_run and url:
+    if url:
         webhook = WebhookClient(url)
         response = webhook.send(
             text="fallback",
@@ -39,6 +42,8 @@ def slack_notify(message: str, dry_run: bool):
             ])
         assert response.status_code == 200
         assert response.body == "ok"
+    else:
+        print("No Slack webhook supplied.")
 
 
 def check_commit_status(component, ref, github_api):
