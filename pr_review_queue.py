@@ -45,16 +45,16 @@ def check_commit_status(component, ref, github_api):
     """
     Check whether the commit to be deployed has passed the CI tests
     """
-    status = github_api.repos.get_combined_status_for_ref(owner='osbuild',repo=component,ref=ref)
+    status = github_api.repos.get_combined_status_for_ref(repo=component,ref=ref)
     if status.state == "success":
         state = "🟢"
     elif status.state == "failure":
         state = "🔴"
     elif status.state == "pending":
         state = "🟠"
-        single_status = github_api.repos.list_commit_statuses_for_ref(owner='osbuild',repo=component,ref=ref)
+        single_status = github_api.repos.list_commit_statuses_for_ref(repo=component,ref=ref)
         if single_status == []:
-            check_runs = github_api.checks.list_for_ref(owner='osbuild',repo=component,ref=ref, per_page=100)
+            check_runs = github_api.checks.list_for_ref(repo=component,ref=ref, per_page=100)
             runs = check_runs["check_runs"]
             successful_runs = 0
             for run in runs:
@@ -134,7 +134,7 @@ def list_green_pull_requests(github_api, org, repo, dry_run):
                     continue
             for attempt in range(3):
                 try:
-                    pull_request_details = github_api.pulls.get(owner=org, repo=repo, pull_number=pull_request["number"])
+                    pull_request_details = github_api.pulls.get(repo=repo, pull_number=pull_request["number"])
                 except: # pylint: disable=bare-except
                     time.sleep(2) # avoid API blocking
                 else:
@@ -190,7 +190,7 @@ def main():
                         default=False, action=argparse.BooleanOptionalAction)
     args = parser.parse_args()
 
-    github_api = GhApi(owner='osbuild', token=args.github_token)
+    github_api = GhApi(owner=args.org, token=args.github_token)
     list_green_pull_requests(github_api, args.org, args.repo, args.dry_run)
 
 
