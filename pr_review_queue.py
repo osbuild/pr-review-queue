@@ -96,7 +96,31 @@ def check_commit_status(component, ref, github_api):
     return status.state, state
 
 
-def list_green_pull_requests(github_api, org, repo):
+def get_archived_repos(github_api, org):
+    """
+    Return a list of archived or disabled repositories
+    """
+    try:
+        res = github_api.repos.list_for_org(org)
+    except: # pylint: disable=bare-except
+        print(f"Couldn't get repositories for organisation {org}.")
+
+    archived_repos = []
+
+    if res is not None:
+        for repo in res:
+            if repo["archived"] == True or repo["disabled"] == True:
+                archived_repos.append(repo["name"])
+
+    if archived_repos != []:
+        archived_repos_string = ", ".join(archived_repos)
+        print(f"The following repositories are archived or disabled and will be ignored:\n  {archived_repos_string}")
+        sys.exit(0)
+
+    return archived_repos
+
+
+def list_green_pull_requests(github_api, org, repo, dry_run):
     """
     Get pull requests that match the following criteria:
         1. CI is green
@@ -110,6 +134,7 @@ def list_green_pull_requests(github_api, org, repo):
         entire_org = False
     else:
         print(f"Fetching pull requests from an entire organisation: {org}")
+        archived_repos = get_archived_repos(github_api, org)
         query = (f"org:{org} type:pr is:open")
         entire_org = True
     res = None
@@ -127,6 +152,9 @@ def list_green_pull_requests(github_api, org, repo):
         for pull_request in pull_requests:
             if entire_org: # necessary when iterating an organisation
                 repo = pull_request.repository_url.split('/')[-1]
+                if archived_repos != [] and repo in archived_repos:
+                    print(f" * Repository '{org}/{repo}' is archived or disabled. Skipping.")
+                    continue
             for attempt in range(3):
                 try:
                     pull_request_details = github_api.pulls.get(owner=org, repo=repo, pull_number=pull_request["number"])
