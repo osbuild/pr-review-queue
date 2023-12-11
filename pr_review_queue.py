@@ -12,27 +12,6 @@ from slack_sdk.webhook import WebhookClient
 from ghapi.all import GhApi
 
 
-# pylint: disable=too-few-public-methods,invalid-name
-class fg:
-    """
-    Set of constants to print colored output in the terminal
-    """
-    BOLD = '\033[1m'  # bold
-    OK = '\033[32m'  # green
-    INFO = '\033[33m'  # yellow
-    ERROR = '\033[31m'  # red
-    RESET = '\033[0m'  # reset
-
-
-def msg_error(body, fail=True):
-    """
-    Print error and exit
-    """
-    print(f"{fg.ERROR}{fg.BOLD}Error:{fg.RESET} {body}")
-    if fail:
-        sys.exit(1)
-
-
 def slack_notify(message: str, dry_run: bool):
     """
     Send notifications to Image Builder's Slack channel
@@ -91,7 +70,6 @@ def check_commit_status(component, ref, github_api):
                 print(f"Warning: something is terribly wrong: successful runs ({successful_runs}) should never be more than total runs ({len(runs)}).")
     else:
         state = status.state
-    #print(f" * {ref} {state}")
 
     return status.state, state
 
@@ -204,7 +182,7 @@ def list_green_pull_requests(github_api, org, repo, dry_run):
 
 
 def main():
-    """Get a commit that is at least a week old and green"""
+    """Create a pull request review queue"""
     parser = argparse.ArgumentParser(allow_abbrev=False)
     parser.add_argument("--github-token", help="Set a token for github.com", required=True)
     parser.add_argument("--org", help="Set an organisation on github.com", required=True)
@@ -215,7 +193,6 @@ def main():
 
     github_api = GhApi(owner='osbuild', token=args.github_token)
     list_green_pull_requests(github_api, args.org, args.repo, args.dry_run)
-
 
 
 if __name__ == "__main__":
