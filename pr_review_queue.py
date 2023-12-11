@@ -130,8 +130,7 @@ def list_green_pull_requests(github_api, org, repo, dry_run):
         pull_requests = res["items"]
         print(f"{len(pull_requests)} pull requests retrieved.")
         title = "*Pull request review queue*\n"
-        pr_summaries = []
-        i = 1
+        pr_map = {}
 
         for pull_request in pull_requests:
             if entire_org: # necessary when iterating an organisation
@@ -166,24 +165,40 @@ def list_green_pull_requests(github_api, org, repo, dry_run):
                 elif "failure" in status or "pending" in status: # requirement 2: CI is a success
                     continue
 
+                assignees = [x["login"] for x in pull_request_details["assignees"] + pull_request_details["requested_reviewers"]]
+                author = pull_request.user["login"]
+                responsible = assignees
+
                 if pull_request_details["mergeable"] == True:
                     print("  Pull request is mergeable.")
                 if pull_request_details["rebaseable"] == True:
                     print("  Pull request is rebaseable.")
                 if pull_request_details["mergeable_state"] == "clean":
                     print("  Pull request is cleanly mergeable.")
-                elif pull_request_details["mergeable_state"] == "dirty": # requirement 4: no merge conflicts
+                elif pull_request_details["mergeable_state"] == "dirty": # requirement 4: no merge conflicts, author is responsible
                     print("  Pull request has merge conflicts.")
-                    continue
+                    responsible = [author] # TODO if in the team
                 else:
                     print(f"  Pull request's mergeable state is '{pull_request_details['mergeable_state']}'.")
 
-                user = pull_request.user
-                pr_summaries.append(f"{i}. *<https://github.com/{org}/{repo}|{repo}>*: <{pull_request.html_url}|{pull_request.title}> (+{pull_request_details['additions']}/-{pull_request_details['deletions']}) by <https://github.com/{user['login']}|{user['login']}>")
-                i += 1
+                if not assignees: # No requested review, author should do so
+                    responsible = [author] # TODO if in the team
 
-        message = title + "\n".join(pr_summaries)
-        slack_notify(message, dry_run)
+                text = f"  *<https://github.com/{org}/{repo}|{repo}>*: <{pull_request.html_url}|{pull_request.title}> (+{pull_request_details['additions']}/-{pull_request_details['deletions']}) by <https://github.com/{author}|{author}>")
+
+                for user in responsible:
+                    if user not in pr_map:
+                        pr_map[user] = [text]
+                    else:
+                        pr_map[user].append(text)
+
+        user_list = []
+        for user, items in pr_map.items():
+            user_list.append(f"{user}:")
+            user_list.append("\n".join(items))
+
+        pr_list = title + "\n".join(user_list)
+        slack_notify(pr_list, dry_run)
 
     else:
         print("Didn't get any pull requests.")
