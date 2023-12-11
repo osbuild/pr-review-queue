@@ -5,8 +5,10 @@ Small bot to create a pull request review queue on Slack
 """
 
 import argparse
+import os
 import sys
 import time
+from slack_sdk.webhook import WebhookClient
 from ghapi.all import GhApi
 
 
@@ -29,6 +31,35 @@ def msg_error(body, fail=True):
     print(f"{fg.ERROR}{fg.BOLD}Error:{fg.RESET} {body}")
     if fail:
         sys.exit(1)
+
+
+def slack_notify(message: str, dry_run: bool):
+    """
+    Send notifications to Image Builder's Slack channel
+    """
+    url = os.getenv('SLACK_WEBHOOK_URL')
+    github_server_url = os.getenv('GITHUB_SERVER_URL')
+    github_repository = os.getenv('GITHUB_REPOSITORY')
+    github_run_id = os.getenv('GITHUB_RUN_ID')
+    github_url = f"{github_server_url}/{github_repository}/actions/runs/{github_run_id}"
+
+    print(message)
+
+    if not dry_run and url:
+        webhook = WebhookClient(url)
+        response = webhook.send(
+            text="fallback",
+            blocks=[
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": f"<{github_url}|pr-review-queue>: {message}"
+                    }
+                }
+            ])
+        assert response.status_code == 200
+        assert response.body == "ok"
 
 
 def check_commit_status(component, ref, github_api):
@@ -91,6 +122,7 @@ def list_green_pull_requests(github_api, org, repo):
     if res is not None:
         pull_requests = res["items"]
         print(f"{len(pull_requests)} pull requests retrieved.")
+        message = "*Pull request review queue*\n"
 
         for pull_request in pull_requests:
             if entire_org: # necessary when iterating an organisation
@@ -128,11 +160,16 @@ def list_green_pull_requests(github_api, org, repo):
                     print("  Pull request is rebaseable.")
                 if pull_request_details["mergeable_state"] == "clean":
                     print("  Pull request is cleanly mergeable.")
-                elif pull_request_details["mergeable_state"] == "dirty":
-                    print("  Pull request has merge conflicts.") # requirement 4: no merge conflicts
+                elif pull_request_details["mergeable_state"] == "dirty": # requirement 4: no merge conflicts
+                    print("  Pull request has merge conflicts.")
                     continue
                 else:
                     print(f"  Pull request's mergeable state is '{pull_request_details["mergeable_state"]}'.")
+
+                user = pull_request.user
+                message += f"* {repo}: [{pull_request.title}]({pull_request.html_url}) (+{pull_request_details["additions"]}/-{pull_request_details["deletions"]}) by [{user['login']}](https://github.com/{user['login']})\n"
+
+        slack_notify(message, dry_run)
 
     else:
         print("Didn't get any pull requests.")
@@ -144,12 +181,12 @@ def main():
     parser.add_argument("--github-token", help="Set a token for github.com", required=True)
     parser.add_argument("--org", help="Set an organisation on github.com", required=True)
     parser.add_argument("--repo", help="Set a repo in `--org` on github.com", required=False)
-    #parser.add_argument("--dry-run", help="Don't send Slack notifications",
-    #                    default=False, action=argparse.BooleanOptionalAction)
+    parser.add_argument("--dry-run", help="Don't send Slack notifications",
+                        default=False, action=argparse.BooleanOptionalAction)
     args = parser.parse_args()
 
     github_api = GhApi(owner='osbuild', token=args.github_token)
-    list_green_pull_requests(github_api, args.org, args.repo)
+    list_green_pull_requests(github_api, args.org, args.repo, args.dry_run)
 
 
 
