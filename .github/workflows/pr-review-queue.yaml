@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
 
     container:
-      image: ghcr.io/osbuild/fedora-bot:latest
+      image: ghcr.io/ochosi/pr-review-queue:latest
 
     steps:
       - name: Check out the repo
