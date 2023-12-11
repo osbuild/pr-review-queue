@@ -184,7 +184,7 @@ def list_green_pull_requests(github_api, org, repo, dry_run):
                     print(f"  Pull request's mergeable state is '{pull_request_details['mergeable_state']}'.")
 
                 user = pull_request.user
-                pr_summaries.append(f"{i}. *<{repo}|https://github.com/{org}/{repo}>*: <{pull_request.title}|{pull_request.html_url}> (+{pull_request_details['additions']}/-{pull_request_details['deletions']}) by <{user['login']}|https://github.com/{user['login']}>")
+                pr_summaries.append(f"{i}. *<https://github.com/{org}/{repo}|{repo}>*: <{pull_request.html_url}|{pull_request.title}> (+{pull_request_details['additions']}/-{pull_request_details['deletions']}) by <https://github.com/{user['login']}|{user['login']}>")
                 i += 1
 
         pr_list = "\n".join(pr_summaries)
