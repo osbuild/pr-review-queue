@@ -129,7 +129,9 @@ def list_green_pull_requests(github_api, org, repo, dry_run):
     if res is not None:
         pull_requests = res["items"]
         print(f"{len(pull_requests)} pull requests retrieved.")
-        message = "*Pull request review queue*\n"
+        title = "*Pull request review queue*\n"
+        pr_summaries = []
+        i = 1
 
         for pull_request in pull_requests:
             if entire_org: # necessary when iterating an organisation
@@ -177,8 +179,10 @@ def list_green_pull_requests(github_api, org, repo, dry_run):
                     print(f"  Pull request's mergeable state is '{pull_request_details['mergeable_state']}'.")
 
                 user = pull_request.user
-                message += f"* *<{repo}|https://github.com/{org}/{repo}>*: <{pull_request.title}|{pull_request.html_url}> (+{pull_request_details['additions']}/-{pull_request_details['deletions']}) by <{user['login']}|https://github.com/{user['login']}>\n"
+                pr_summaries.append(f"{i}. *<{repo}|https://github.com/{org}/{repo}>*: <{pull_request.title}|{pull_request.html_url}> (+{pull_request_details['additions']}/-{pull_request_details['deletions']}) by <{user['login']}|https://github.com/{user['login']}>")
+                i += 1
 
+        message = title + "\n".join(pr_summaries)
         slack_notify(message, dry_run)
 
     else:
