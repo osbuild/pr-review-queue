@@ -152,7 +152,7 @@ def list_green_pull_requests(github_api, org, repo, dry_run):
                 else:
                     status, state = check_commit_status (repo, head["sha"], github_api)
 
-                print(f"* {pull_request.html_url} (+{pull_request_details["additions"]}/-{pull_request_details["deletions"]}) {state}")
+                print(f"* {pull_request.html_url} (+{pull_request_details['additions']}/-{pull_request_details['deletions']}) {state}")
 
                 print(f"  Status: {status}")
                 if status == "draft": # requirement 1: not a draft
@@ -170,10 +170,10 @@ def list_green_pull_requests(github_api, org, repo, dry_run):
                     print("  Pull request has merge conflicts.")
                     continue
                 else:
-                    print(f"  Pull request's mergeable state is '{pull_request_details["mergeable_state"]}'.")
+                    print(f"  Pull request's mergeable state is '{pull_request_details['mergeable_state']}'.")
 
                 user = pull_request.user
-                message += f"* <*{repo}*|https://github.com/{org}/{repo}>: <{pull_request.title}|{pull_request.html_url}> (+{pull_request_details["additions"]}/-{pull_request_details["deletions"]}) by <{user['login']}|https://github.com/{user['login']}>\n"
+                message += f"* <*{repo}*|https://github.com/{org}/{repo}>: <{pull_request.title}|{pull_request.html_url}> (+{pull_request_details['additions']}/-{pull_request_details['deletions']}) by <{user['login']}|https://github.com/{user['login']}>\n"
 
         slack_notify(message, dry_run)
 
