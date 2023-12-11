@@ -40,7 +40,7 @@ def slack_notify(message: str, dry_run: bool):
                     }
                 }
             ])
-        assert response.status_code == 200
+        assert response.status_code == 200, f"Error {response.status_code}\n{response.body}"
         assert response.body == "ok"
     else:
         print("No Slack webhook supplied.")
