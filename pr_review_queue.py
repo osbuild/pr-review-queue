@@ -12,7 +12,7 @@ from slack_sdk.webhook import WebhookClient
 from ghapi.all import GhApi
 
 
-def slack_notify(title:str, pr_list: str, dry_run: bool):
+def slack_notify(message:str, dry_run: bool):
     """
     Send notifications to Image Builder's Slack channel
     """
@@ -22,7 +22,7 @@ def slack_notify(title:str, pr_list: str, dry_run: bool):
     github_run_id = os.getenv('GITHUB_RUN_ID')
     github_url = f"{github_server_url}/{github_repository}/actions/runs/{github_run_id}"
 
-    print(f"{title}\n{pr_list}")
+    print(message)
     if dry_run:
         print("This is just a dry run, not sending Slack notifications.")
         sys.exit(0)
@@ -36,12 +36,7 @@ def slack_notify(title:str, pr_list: str, dry_run: bool):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f"<{github_url}|pr-review-queue>: {title}"
-                    },
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": pr_list
+                        "text": f"<{github_url}|pr-review-queue>: {message}"
                     }
                 }
             ])
@@ -187,8 +182,8 @@ def list_green_pull_requests(github_api, org, repo, dry_run):
                 pr_summaries.append(f"{i}. *<https://github.com/{org}/{repo}|{repo}>*: <{pull_request.html_url}|{pull_request.title}> (+{pull_request_details['additions']}/-{pull_request_details['deletions']}) by <https://github.com/{user['login']}|{user['login']}>")
                 i += 1
 
-        pr_list = "\n".join(pr_summaries)
-        slack_notify(title, pr_list, dry_run)
+        message = title + "\n".join(pr_summaries)
+        slack_notify(message, dry_run)
 
     else:
         print("Didn't get any pull requests.")
