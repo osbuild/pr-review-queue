@@ -173,7 +173,7 @@ def list_green_pull_requests(github_api, org, repo, dry_run):
                     print(f"  Pull request's mergeable state is '{pull_request_details["mergeable_state"]}'.")
 
                 user = pull_request.user
-                message += f"* {repo}: [{pull_request.title}]({pull_request.html_url}) (+{pull_request_details["additions"]}/-{pull_request_details["deletions"]}) by [{user['login']}](https://github.com/{user['login']})\n"
+                message += f"* <*{repo}*|https://github.com/{org}/{repo}>: <{pull_request.title}|{pull_request.html_url}> (+{pull_request_details["additions"]}/-{pull_request_details["deletions"]}) by <{user['login']}|https://github.com/{user['login']}>\n"
 
         slack_notify(message, dry_run)
 
