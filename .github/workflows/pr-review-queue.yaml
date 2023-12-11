@@ -1,0 +1,24 @@
+# Send daily reminders about open pull requests
+name: "PR Review Queue"
+
+on:
+  workflow_dispatch:
+  #schedule:
+  #  - cron: '0 8 * * *'
+
+jobs:
+  weekly:
+    name: Daily PR review queue
+    runs-on: ubuntu-latest
+
+    container:
+      image: ghcr.io/osbuild/fedora-bot:latest
+
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v2
+      - name: Create PR Review Queue
+        run: python3 pr_review_queue.py --github-token "${{ secrets.GITHUB_TOKEN }}" --org osbuild
+        shell: bash
+        env:
+          SLACK_WEBHOOK_URL: "${{ secrets.SLACK_WEBHOOK_URL }}"
