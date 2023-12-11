@@ -93,7 +93,6 @@ def get_archived_repos(github_api, org):
     if archived_repos != []:
         archived_repos_string = ", ".join(archived_repos)
         print(f"The following repositories are archived or disabled and will be ignored:\n  {archived_repos_string}")
-        sys.exit(0)
 
     return archived_repos
 
