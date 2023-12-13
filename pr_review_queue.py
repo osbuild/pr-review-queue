@@ -46,33 +46,48 @@ def slack_notify(message:str, dry_run: bool):
         print("No Slack webhook supplied.")
 
 
-def check_commit_status(component, ref, github_api):
+def get_check_runs(github_api, repo, head):
     """
-    Check whether the commit to be deployed has passed the CI tests
+    Return the combined status of GitHub checks as strong and a state emoji
     """
-    status = github_api.repos.get_combined_status_for_ref(repo=component,ref=ref)
+    check_runs = github_api.checks.list_for_ref(repo=repo,ref=head, per_page=100)
+    runs = check_runs["check_runs"]
+    successful_runs = 0
+
+    for run in runs:
+        if run['status'] == "completed" and run['conclusion'] == "success":
+            successful_runs += 1
+
+    if successful_runs == len(runs):
+        status = f"success ({successful_runs}/{len(runs)})"
+        state = "🟢"
+    elif successful_runs < len(runs):
+        status = f"failure ({successful_runs}/{len(runs)})"
+        state = "🔴"
+    else:
+        print(f"Warning: something is terribly wrong: successful runs ({successful_runs}) should never be more than total runs ({len(runs)}).")
+        sys.exit(1)
+
+    return status, state
+
+
+def get_commit_status(github_api, repo, pull_request_details):
+    """
+    Check whether the HEAD commit has passed the CI tests
+    """
+    head = pull_request_details["head"]
+
+    status = github_api.repos.get_combined_status_for_ref(repo=repo,ref=head["sha"])
     if status.state == "success":
         state = "🟢"
     elif status.state == "failure":
         state = "🔴"
     elif status.state == "pending":
         state = "🟠"
-        single_status = github_api.repos.list_commit_statuses_for_ref(repo=component,ref=ref)
+        # Check if the state is not really 'pending' but if there is none
+        single_status = github_api.repos.list_commit_statuses_for_ref(repo=repo,ref=head["sha"])
         if single_status == []:
-            check_runs = github_api.checks.list_for_ref(repo=component,ref=ref, per_page=100)
-            runs = check_runs["check_runs"]
-            successful_runs = 0
-            for run in runs:
-                if run['status'] == "completed" and run['conclusion'] == "success":
-                    successful_runs += 1
-            if successful_runs == len(runs):
-                status.state = f"success ({successful_runs}/{len(runs)})"
-                state = "🟢"
-            elif successful_runs < len(runs):
-                status.state = f"failure ({successful_runs}/{len(runs)})"
-                state = "🔴"
-            else:
-                print(f"Warning: something is terribly wrong: successful runs ({successful_runs}) should never be more than total runs ({len(runs)}).")
+            status.state, state = get_check_runs(github_api, repo, head["sha"])
     else:
         state = status.state
 
@@ -100,6 +115,42 @@ def get_archived_repos(github_api, org):
         print(f"The following repositories are archived or disabled and will be ignored:\n  {archived_repos_string}")
 
     return archived_repos
+
+
+def get_pull_request_details(github_api, repo, pull_request):
+    """
+    Return a pull_request_details object
+    """
+    for attempt in range(3):
+        try:
+            pull_request_details = github_api.pulls.get(repo=repo, pull_number=pull_request["number"])
+        except: # pylint: disable=bare-except
+            time.sleep(2) # avoid API blocking
+        else:
+            break
+    else:
+        print(f"Tried {attempt} times to get details for {pull_request.html_url}. Skipping.")
+
+    if pull_request_details is not None:
+        return pull_request_details
+    else:
+        print("Couldn't get any pull requests details.")
+        sys.exit(1)
+
+
+def get_changes_requested(github_api, repo, pull_request):
+    """
+    Iterate over reviews associated with a pull requested and return True if changes have been requested
+    """
+    reviews = github_api.pulls.list_reviews(repo=repo,pull_number=pull_request["number"])
+    changes_requested = False
+
+    for review in reviews:
+        if review["state"] == "CHANGES_REQUESTED":
+            changes_requested = True
+            continue
+
+    return changes_requested
 
 
 def list_green_pull_requests(github_api, org, repo, dry_run):
@@ -139,59 +190,44 @@ def list_green_pull_requests(github_api, org, repo, dry_run):
                 if archived_repos != [] and repo in archived_repos:
                     print(f" * Repository '{org}/{repo}' is archived or disabled. Skipping.")
                     continue
-            for attempt in range(3):
-                try:
-                    pull_request_details = github_api.pulls.get(repo=repo, pull_number=pull_request["number"])
-                except: # pylint: disable=bare-except
-                    time.sleep(2) # avoid API blocking
-                else:
-                    break
+
+            pull_request_details = get_pull_request_details(github_api, repo, pull_request)
+
+            if pull_request_details["draft"] == True:
+                status = "draft"
+                state = "⚪"
             else:
-                print(f"Tried {attempt} times to get details for {pull_request.html_url}. Skipping.")
+                status, state = get_commit_status(github_api, repo, pull_request_details)
 
-            if pull_request_details is not None:
-                head = pull_request_details["head"]
+            print(f"* {pull_request.html_url} (+{pull_request_details['additions']}/-{pull_request_details['deletions']}) {state}")
 
-                if pull_request_details["draft"] == True:
-                    status = "draft"
-                    state = "⚪"
-                else:
-                    status, state = check_commit_status (repo, head["sha"], github_api)
+            print(f"  Status: {status}")
+            if status == "draft": # requirement 1: not a draft
+                continue
+            elif "failure" in status or "pending" in status: # requirement 2: CI is a success
+                continue
 
-                print(f"* {pull_request.html_url} (+{pull_request_details['additions']}/-{pull_request_details['deletions']}) {state}")
+            changes_requested = get_changes_requested(github_api, repo, pull_request) # requirement 3: no changes requested
+            if changes_requested:
+                print("  Pull request has changes requested.")
+                continue
 
-                print(f"  Status: {status}")
-                if status == "draft": # requirement 1: not a draft
-                    continue
-                elif "failure" in status or "pending" in status: # requirement 2: CI is a success
-                    continue
+            if pull_request_details["mergeable"] == True:
+                print("  Pull request is mergeable.")
+            if pull_request_details["rebaseable"] == True:
+                print("  Pull request is rebaseable.")
 
-                reviews = github_api.pulls.list_reviews(repo=repo,pull_number=pull_request["number"])
-                changes_requested = False
-                for review in reviews:
-                    if review["state"] == "CHANGES_REQUESTED":
-                        changes_requested = True
-                        continue
+            if pull_request_details["mergeable_state"] == "clean":
+                print("  Pull request is cleanly mergeable.")
+            elif pull_request_details["mergeable_state"] == "dirty": # requirement 4: no merge conflicts
+                print("  Pull request has merge conflicts.")
+                continue
+            else:
+                print(f"  Pull request's mergeable state is '{pull_request_details['mergeable_state']}'.")
 
-                if changes_requested:
-                    print("  Pull request has changes requested.") # requirement 3: no changes requested
-                    continue
-
-                if pull_request_details["mergeable"] == True:
-                    print("  Pull request is mergeable.")
-                if pull_request_details["rebaseable"] == True:
-                    print("  Pull request is rebaseable.")
-                if pull_request_details["mergeable_state"] == "clean":
-                    print("  Pull request is cleanly mergeable.")
-                elif pull_request_details["mergeable_state"] == "dirty": # requirement 4: no merge conflicts
-                    print("  Pull request has merge conflicts.")
-                    continue
-                else:
-                    print(f"  Pull request's mergeable state is '{pull_request_details['mergeable_state']}'.")
-
-                user = pull_request.user
-                pr_summaries.append(f"{i}. *<https://github.com/{org}/{repo}|{repo}>*: <{pull_request.html_url}|{pull_request.title}> (+{pull_request_details['additions']}/-{pull_request_details['deletions']}) by <https://github.com/{user['login']}|{user['login']}>")
-                i += 1
+            user = pull_request.user
+            pr_summaries.append(f"{i}. *<https://github.com/{org}/{repo}|{repo}>*: <{pull_request.html_url}|{pull_request.title}> (+{pull_request_details['additions']}/-{pull_request_details['deletions']}) by <https://github.com/{user['login']}|{user['login']}>")
+            i += 1
 
         message = title + "\n".join(pr_summaries)
         slack_notify(message, dry_run)
