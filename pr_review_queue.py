@@ -173,7 +173,7 @@ def list_green_pull_requests(github_api, org, repo, dry_run):
     res = None
 
     try:
-        res = github_api.search.issues_and_pull_requests(q=query, per_page=100, sort="updated",order="desc")
+        res = github_api.search.issues_and_pull_requests(q=query, per_page=100, sort="updated",order="asc")
     except: # pylint: disable=bare-except
         print("Couldn't get any pull requests.")
 
