@@ -166,6 +166,17 @@ def list_green_pull_requests(github_api, org, repo, dry_run):
                 elif "failure" in status or "pending" in status: # requirement 2: CI is a success
                     continue
 
+                reviews = github_api.pulls.list_reviews(repo=repo,pull_number=pull_request["number"])
+                changes_requested = False
+                for review in reviews:
+                    if review["state"] == "CHANGES_REQUESTED":
+                        changes_requested = True
+                        continue
+
+                if changes_requested:
+                    print("  Pull request has changes requested.") # requirement 3: no changes requested
+                    continue
+
                 if pull_request_details["mergeable"] == True:
                     print("  Pull request is mergeable.")
                 if pull_request_details["rebaseable"] == True:
