@@ -15,7 +15,7 @@ jobs:
     steps:
       - name: Check out the repo
         uses: actions/checkout@v2
-      - name: Create PR Review Queue
+      - name: Create PR Review Queue for osbuild/osbuild
         run: |
-          python3 pr_review_queue.py --github-token "${{ secrets.GITHUB_TOKEN }}" --queue --org osbuild --dry-run
+          python3 pr_review_queue.py --github-token "${{ secrets.GITHUB_TOKEN }}" --queue --org osbuild --repo osbuild --dry-run
         shell: bash
