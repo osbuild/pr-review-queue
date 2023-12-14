@@ -264,6 +264,10 @@ def main():
 
     if args.queue:
         pr_review_queue = create_pr_review_queue(pull_request_list)
+        if pr_review_queue == []:
+            print("No pull requests found that match our criteria. Exiting.")
+            sys.exit(0)
+
         message = f":pull-request: *Pull request review queue* :pull-request:\n" + "\n".join(pr_review_queue)
         slack_notify(message, args.dry_run)
 
