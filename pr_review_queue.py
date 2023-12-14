@@ -231,7 +231,6 @@ def create_pr_review_queue(pull_request_list):
     """
     pr_review_queue = []
     i = 0
-    print("PR Review Queue:")
     for pull_request in pull_request_list:
         if (pull_request["status"] == "success" and
             pull_request["draft"] == False and
