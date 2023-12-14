@@ -239,7 +239,7 @@ def create_pr_review_queue(pull_request_list):
             pull_request["changes_requested"] == False and
             pull_request["mergeable_state"] != "dirty"):
             i += 1
-            entry = (f"{i}. *<https://github.com/{pull_request['org']}/{pull_request['repo']}|{pull_request['repo']}>*:"
+            entry = (f"{i}. *{pull_request['repo']}*:"
                      f" <{pull_request['html_url']}|{pull_request['title']}>"
                      f" (+{pull_request['additions']}/-{pull_request['deletions']})"
                      f" by <https://github.com/{pull_request['login']}|{pull_request['login']}>")
