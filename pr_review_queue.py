@@ -98,6 +98,8 @@ def get_archived_repos(github_api, org):
     """
     Return a list of archived or disabled repositories
     """
+    res = None
+
     try:
         res = github_api.repos.list_for_org(org)
     except: # pylint: disable=bare-except
@@ -186,6 +188,7 @@ def get_pull_request_list(github_api, org, repo):
     Return a list of pull requests with their properties
     """
     pull_request_list = []
+    res = None
 
     if repo:
         print(f"Fetching pull requests from one repository: {org}/{repo}")
@@ -200,7 +203,6 @@ def get_pull_request_list(github_api, org, repo):
     try:
         res = github_api.search.issues_and_pull_requests(q=query, per_page=100, sort="updated",order="asc")
     except: # pylint: disable=bare-except
-        res = None
         print("Couldn't get any pull requests.")
 
     if res is not None:
