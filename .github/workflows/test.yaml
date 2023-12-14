@@ -17,5 +17,5 @@ jobs:
         uses: actions/checkout@v2
       - name: Create PR Review Queue
         run: |
-          python3 pr_review_queue.py --github-token "${{ secrets.GITHUB_TOKEN }}" --org osbuild --dry-run
+          python3 pr_review_queue.py --github-token "${{ secrets.GITHUB_TOKEN }}" --queue --org osbuild --dry-run
         shell: bash

@@ -166,6 +166,8 @@ def get_pull_request_properties(github_api, pull_request, org, repo):
     pr_properties["title"] = pull_request.title
     pr_properties["org"] = org
     pr_properties["repo"] = repo
+    pr_properties["created_at"] = pull_request.created_at
+    pr_properties["updated_at"] = pull_request.updated_at
     pr_properties["login"] = pull_request.user['login']
     pr_properties["additions"] = pull_request_details["additions"]
     pr_properties["deletions"] = pull_request_details["deletions"]
@@ -221,12 +223,13 @@ def get_pull_request_list(github_api, org, repo):
 
 def create_pr_review_queue(pull_request_list):
     """
-    Filter the pull request list due to these criteria:
+    Return a filtered list of pull requests according to these criteria:
         1. CI is green
         2. Not a draft
         3. No changes requested
         4. No merge conflicts
     """
+    pr_review_queue = []
     i = 0
     print("PR Review Queue:")
     for pull_request in pull_request_list:
@@ -235,9 +238,13 @@ def create_pr_review_queue(pull_request_list):
             pull_request["changes_requested"] == False and
             pull_request["mergeable_state"] != "dirty"):
             i += 1
-            print(f"{i}. *<https://github.com/{pull_request['org']}/{pull_request['repo']}|{pull_request['repo']}>*:"
-                  f" <{pull_request['html_url']}|{pull_request['title']}> (+{pull_request['additions']}/-{pull_request['deletions']})"
-                  f" by <https://github.com/{pull_request['login']}|{pull_request['login']}>")
+            entry = (f"{i}. *<https://github.com/{pull_request['org']}/{pull_request['repo']}|{pull_request['repo']}>*:"
+                     f" <{pull_request['html_url']}|{pull_request['title']}>"
+                     f" (+{pull_request['additions']}/-{pull_request['deletions']})"
+                     f" by <https://github.com/{pull_request['login']}|{pull_request['login']}>")
+            pr_review_queue.append(entry)
+
+    return pr_review_queue
 
 
 def main():
@@ -246,15 +253,20 @@ def main():
     parser.add_argument("--github-token", help="Set a token for github.com", required=True)
     parser.add_argument("--org", help="Set an organisation on github.com", required=True)
     parser.add_argument("--repo", help="Set a repo in `--org` on github.com", required=False)
-    parser.add_argument("--dry-run", help="Don't send Slack notifications",
-                        default=False, action=argparse.BooleanOptionalAction)
+    parser.add_argument("--queue", help="Create a review queue", default=False,
+                        action=argparse.BooleanOptionalAction)
+    parser.add_argument("--dry-run", help="Don't send Slack notifications", default=False,
+                        action=argparse.BooleanOptionalAction)
     args = parser.parse_args()
 
     github_api = GhApi(owner=args.org, token=args.github_token)
 
     pull_request_list = get_pull_request_list(github_api, args.org, args.repo)
 
-    create_pr_review_queue(pull_request_list)
+    if args.queue:
+        pr_review_queue = create_pr_review_queue(pull_request_list)
+        message = f":pull-request: *Pull request review queue* :pull-request:\n" + "\n".join(pr_review_queue)
+        slack_notify(message, args.dry_run)
 
 
 if __name__ == "__main__":
