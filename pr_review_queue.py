@@ -153,87 +153,91 @@ def get_changes_requested(github_api, repo, pull_request):
     return changes_requested
 
 
-def list_green_pull_requests(github_api, org, repo, dry_run):
+def get_pull_request_properties(github_api, pull_request, org, repo):
     """
-    Get pull requests that match the following criteria:
-        1. CI is green
-        2. Not a draft
-        3. No changes requested
-        4. No merge conflicts
+    Return a dictionary of all relevant pull request properties
     """
+    pr_properties = {}
+
+    pull_request_details = get_pull_request_details(github_api, repo, pull_request)
+
+    pr_properties["number"] = pull_request["number"]
+    pr_properties["html_url"] = pull_request.html_url
+    pr_properties["title"] = pull_request.title
+    pr_properties["org"] = org
+    pr_properties["repo"] = repo
+    pr_properties["login"] = pull_request.user['login']
+    pr_properties["additions"] = pull_request_details["additions"]
+    pr_properties["deletions"] = pull_request_details["deletions"]
+    pr_properties["draft"] = pull_request_details["draft"]
+    pr_properties["mergeable"] = pull_request_details["mergeable"]
+    pr_properties["rebaseable"] = pull_request_details["rebaseable"]
+    pr_properties["mergeable_state"] = pull_request_details["mergeable_state"]
+    pr_properties["changes_requested"] = get_changes_requested(github_api, repo, pull_request)
+    pr_properties["status"], pr_properties["state"] = get_commit_status(github_api, repo, pull_request_details)
+
+    return pr_properties
+
+
+def get_pull_request_list(github_api, org, repo):
+    """
+    Return a list of pull requests with their properties
+    """
+    pull_request_list = []
+
     if repo:
         print(f"Fetching pull requests from one repository: {org}/{repo}")
         query = (f"repo:{org}/{repo} type:pr is:open")
         entire_org = False
     else:
         print(f"Fetching pull requests from an entire organisation: {org}")
-        archived_repos = get_archived_repos(github_api, org)
         query = (f"org:{org} type:pr is:open")
         entire_org = True
-    res = None
+        archived_repos = get_archived_repos(github_api, org)
 
     try:
         res = github_api.search.issues_and_pull_requests(q=query, per_page=100, sort="updated",order="asc")
     except: # pylint: disable=bare-except
+        res = None
         print("Couldn't get any pull requests.")
 
     if res is not None:
         pull_requests = res["items"]
         print(f"{len(pull_requests)} pull requests retrieved.")
-        title = "*Pull request review queue*\n"
-        pr_summaries = []
-        i = 1
 
         for pull_request in pull_requests:
-            if entire_org: # necessary when iterating an organisation
+            if entire_org: # necessary when iterating over an organisation
                 repo = pull_request.repository_url.split('/')[-1]
                 if archived_repos != [] and repo in archived_repos:
                     print(f" * Repository '{org}/{repo}' is archived or disabled. Skipping.")
                     continue
 
-            pull_request_details = get_pull_request_details(github_api, repo, pull_request)
+            print(f" * Processing {pull_request.html_url}")
+            pull_request_props = get_pull_request_properties(github_api, pull_request, org, repo)
+            pull_request_list.append(pull_request_props)
 
-            if pull_request_details["draft"] == True:
-                status = "draft"
-                state = "⚪"
-            else:
-                status, state = get_commit_status(github_api, repo, pull_request_details)
+    return pull_request_list
 
-            print(f"* {pull_request.html_url} (+{pull_request_details['additions']}/-{pull_request_details['deletions']}) {state}")
 
-            print(f"  Status: {status}")
-            if status == "draft": # requirement 1: not a draft
-                continue
-            elif "failure" in status or "pending" in status: # requirement 2: CI is a success
-                continue
-
-            changes_requested = get_changes_requested(github_api, repo, pull_request) # requirement 3: no changes requested
-            if changes_requested:
-                print("  Pull request has changes requested.")
-                continue
-
-            if pull_request_details["mergeable"] == True:
-                print("  Pull request is mergeable.")
-            if pull_request_details["rebaseable"] == True:
-                print("  Pull request is rebaseable.")
-
-            if pull_request_details["mergeable_state"] == "clean":
-                print("  Pull request is cleanly mergeable.")
-            elif pull_request_details["mergeable_state"] == "dirty": # requirement 4: no merge conflicts
-                print("  Pull request has merge conflicts.")
-                continue
-            else:
-                print(f"  Pull request's mergeable state is '{pull_request_details['mergeable_state']}'.")
-
-            user = pull_request.user
-            pr_summaries.append(f"{i}. *<https://github.com/{org}/{repo}|{repo}>*: <{pull_request.html_url}|{pull_request.title}> (+{pull_request_details['additions']}/-{pull_request_details['deletions']}) by <https://github.com/{user['login']}|{user['login']}>")
+def create_pr_review_queue(pull_request_list):
+    """
+    Filter the pull request list due to these criteria:
+        1. CI is green
+        2. Not a draft
+        3. No changes requested
+        4. No merge conflicts
+    """
+    i = 0
+    print("PR Review Queue:")
+    for pull_request in pull_request_list:
+        if (pull_request["status"] == "success" and
+            pull_request["draft"] == False and
+            pull_request["changes_requested"] == False and
+            pull_request["mergeable_state"] != "dirty"):
             i += 1
-
-        message = title + "\n".join(pr_summaries)
-        slack_notify(message, dry_run)
-
-    else:
-        print("Didn't get any pull requests.")
+            print(f"{i}. *<https://github.com/{pull_request['org']}/{pull_request['repo']}|{pull_request['repo']}>*:"
+                  f" <{pull_request['html_url']}|{pull_request['title']}> (+{pull_request['additions']}/-{pull_request['deletions']})"
+                  f" by <https://github.com/{pull_request['login']}|{pull_request['login']}>")
 
 
 def main():
@@ -247,7 +251,10 @@ def main():
     args = parser.parse_args()
 
     github_api = GhApi(owner=args.org, token=args.github_token)
-    list_green_pull_requests(github_api, args.org, args.repo, args.dry_run)
+
+    pull_request_list = get_pull_request_list(github_api, args.org, args.repo)
+
+    create_pr_review_queue(pull_request_list)
 
 
 if __name__ == "__main__":
