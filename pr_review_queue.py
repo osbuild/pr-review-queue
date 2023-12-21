@@ -29,17 +29,7 @@ def slack_notify(message:str, dry_run: bool):
 
     if url:
         webhook = WebhookClient(url)
-        response = webhook.send(
-            text="fallback",
-            blocks=[
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": f"<{github_url}|pr-review-queue>: {message}"
-                    }
-                }
-            ])
+        response = webhook.send(text=f"<{github_url}|pr-review-queue>: {message}")
         assert response.status_code == 200, f"Error {response.status_code}\n{response.body}"
         assert response.body == "ok"
     else:
