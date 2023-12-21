@@ -321,11 +321,11 @@ def main():
         if needs_reviewer != []:
             message += "\n\n:frog-derp: *We need a reviewer*\n  • " + "\n  • ".join(needs_reviewer)
         if needs_changes != []:
-            message += "\n\n:changes_requested: *We need changes* \n  • " + "\n  • ".join(needs_changes)
+            message += "\n\n:changes_requested: *We need changes*\n  • " + "\n  • ".join(needs_changes)
         if needs_review != []:
             message += "\n\n:frog-flushed: *We need a review*\n  • " + "\n  • ".join(needs_review)
         if needs_conflict_resolution != []:
-            message += "\n\n:expressionless-meow: *We need conflict resolution*\n  • " +  "\n  • ".join(needs_conflict_resolution)
+            message += "\n\n:expressionless-meow: *Update required*\n  • " +  "\n  • ".join(needs_conflict_resolution)
 
         slack_notify(message, args.dry_run)
 
