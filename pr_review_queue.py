@@ -52,20 +52,21 @@ def get_check_runs(github_api, repo, head):
     """
     check_runs = github_api.checks.list_for_ref(repo=repo,ref=head, per_page=100)
     runs = check_runs["check_runs"]
+    total_count = check_runs["total_count"]
     successful_runs = 0
 
     for run in runs:
         if run['status'] == "completed" and run['conclusion'] == "success":
             successful_runs += 1
 
-    if successful_runs == len(runs):
-        status = f"success ({successful_runs}/{len(runs)})"
+    if successful_runs == total_count:
+        status = "success"
         state = "🟢"
-    elif successful_runs < len(runs):
-        status = f"failure ({successful_runs}/{len(runs)})"
+    elif successful_runs < total_count:
+        status = "failure"
         state = "🔴"
     else:
-        print(f"Warning: something is terribly wrong: successful runs ({successful_runs}) should never be more than total runs ({len(runs)}).")
+        print(f"Warning: something is terribly wrong: successful runs ({successful_runs}) should never be more than total runs ({total_count}).")
         sys.exit(1)
 
     return status, state
