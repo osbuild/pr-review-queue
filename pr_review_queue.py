@@ -146,19 +146,19 @@ def get_pull_request_details(github_api, repo, pull_request):
         sys.exit(1)
 
 
-def get_changes_requested(github_api, repo, pull_request):
+def get_review_state(github_api, repo, pull_request, state):
     """
     Iterate over reviews associated with a pull requested and return True if changes have been requested
     """
     reviews = github_api.pulls.list_reviews(repo=repo,pull_number=pull_request["number"])
-    changes_requested = False
+    review_state = False
 
     for review in reviews:
-        if review["state"] == "CHANGES_REQUESTED":
-            changes_requested = True
+        if review["state"] == state:
+            review_state = True
             continue
 
-    return changes_requested
+    return review_state
 
 
 def get_pull_request_properties(github_api, pull_request, org, repo):
@@ -184,7 +184,8 @@ def get_pull_request_properties(github_api, pull_request, org, repo):
     pr_properties["mergeable"] = pull_request_details["mergeable"]
     pr_properties["rebaseable"] = pull_request_details["rebaseable"]
     pr_properties["mergeable_state"] = pull_request_details["mergeable_state"]
-    pr_properties["changes_requested"] = get_changes_requested(github_api, repo, pull_request)
+    pr_properties["changes_requested"] = get_review_state(github_api, repo, pull_request, "CHANGES_REQUESTED")
+    pr_properties["approved"] = get_review_state(github_api, repo, pull_request, "APPROVED")
     pr_properties["status"], pr_properties["state"] = get_commit_status(github_api, repo, pull_request_details)
 
     return pr_properties
@@ -251,8 +252,9 @@ def create_pr_review_queue(pull_request_list):
             pull_request["draft"] == False):
             # 1. Needs reviewer
             if (pull_request["changes_requested"] == False and
-                pull_request["mergeable_state"] != "dirty" and
-                pull_request["requested_reviewers"] == []):
+                pull_request["approved"] == False and
+                pull_request["requested_reviewers"] == [] and
+                pull_request["mergeable_state"] != "dirty"):
                 entry = (f"*{pull_request['repo']}*:"
                         f" <{pull_request['html_url']}|{pull_request['title']}>"
                         f" (+{pull_request['additions']}/-{pull_request['deletions']})")
@@ -267,8 +269,9 @@ def create_pr_review_queue(pull_request_list):
                 needs_changes.append(entry)
             # 3. Needs review
             if (pull_request["changes_requested"] == False and
-                pull_request["mergeable_state"] != "dirty" and
-                pull_request["requested_reviewers"] != []):
+                pull_request["approved"] == False and
+                pull_request["requested_reviewers"] != [] and
+                pull_request["mergeable_state"] != "dirty"):
                 reviewers = []
                 for requested_reviewer in pull_request["requested_reviewers"]:
                     reviewers.append(requested_reviewer['login'])
