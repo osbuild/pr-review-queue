@@ -177,6 +177,7 @@ def get_pull_request_properties(github_api, pull_request, org, repo):
     pr_properties["created_at"] = pull_request.created_at
     pr_properties["updated_at"] = pull_request.updated_at
     pr_properties["login"] = pull_request.user['login']
+    pr_properties["requested_reviewers"] = pull_request_details["requested_reviewers"]
     pr_properties["additions"] = pull_request_details["additions"]
     pr_properties["deletions"] = pull_request_details["deletions"]
     pr_properties["draft"] = pull_request_details["draft"]
@@ -234,24 +235,58 @@ def create_pr_review_queue(pull_request_list):
     Return a filtered list of pull requests according to these criteria:
         1. CI is green
         2. Not a draft
-        3. No changes requested
-        4. No merge conflicts
+    The resulting pull requests are grouped into four sections:
+        1. ‘Needs reviewer’: ping author about finding a reviewer
+        2. ‘Needs changes’: ping author to do the changes
+        3. ‘Needs review’: ping assigned reviewer/s
+        4. ‘Needs conflict resolution’: ping author to rebase/fix conflicts
     """
-    pr_review_queue = []
-    i = 0
+    needs_reviewer = []
+    needs_changes = []
+    needs_review = []
+    needs_conflict_resolution = []
+
     for pull_request in pull_request_list:
         if (pull_request["status"] == "success" and
-            pull_request["draft"] == False and
-            pull_request["changes_requested"] == False and
-            pull_request["mergeable_state"] != "dirty"):
-            i += 1
-            entry = (f"{i}. *{pull_request['repo']}*:"
-                     f" <{pull_request['html_url']}|{pull_request['title']}>"
-                     f" (+{pull_request['additions']}/-{pull_request['deletions']})"
-                     f" by <https://github.com/{pull_request['login']}|{pull_request['login']}>")
-            pr_review_queue.append(entry)
+            pull_request["draft"] == False):
+            # 1. Needs reviewer
+            if (pull_request["changes_requested"] == False and
+                pull_request["mergeable_state"] != "dirty" and
+                pull_request["requested_reviewers"] == []):
+                entry = (f"*{pull_request['repo']}*:"
+                        f" <{pull_request['html_url']}|{pull_request['title']}>"
+                        f" (+{pull_request['additions']}/-{pull_request['deletions']})")
+                needs_reviewer.append(entry)
+            # 2. Needs changes
+            if (pull_request["changes_requested"] == True and
+                pull_request["mergeable_state"] != "dirty"):
+                entry = (f"*{pull_request['repo']}*:"
+                        f" <{pull_request['html_url']}|{pull_request['title']}>"
+                        f" (+{pull_request['additions']}/-{pull_request['deletions']})"
+                        f" needs changes by <https://github.com/{pull_request['login']}|{pull_request['login']}>")
+                needs_changes.append(entry)
+            # 3. Needs review
+            if (pull_request["changes_requested"] == False and
+                pull_request["mergeable_state"] != "dirty" and
+                pull_request["requested_reviewers"] != []):
+                reviewers = []
+                for requested_reviewer in pull_request["requested_reviewers"]:
+                    reviewers.append(requested_reviewer['login'])
+                entry = (f"*{pull_request['repo']}*:"
+                        f" <{pull_request['html_url']}|{pull_request['title']}>"
+                        f" (+{pull_request['additions']}/-{pull_request['deletions']})"
+                        f" needs a review from {', '.join(reviewers)}")
+                needs_review.append(entry)
+            # 4. Needs conflict resolution
+            if (pull_request["changes_requested"] == False and
+                pull_request["mergeable_state"] == "dirty"):
+                entry = (f"*{pull_request['repo']}*:"
+                        f" <{pull_request['html_url']}|{pull_request['title']}>"
+                        f" (+{pull_request['additions']}/-{pull_request['deletions']})"
+                        f" <https://github.com/{pull_request['login']}|{pull_request['login']}>")
+                needs_conflict_resolution.append(entry)
 
-    return pr_review_queue
+    return needs_reviewer, needs_changes, needs_review, needs_conflict_resolution
 
 
 def main():
@@ -271,13 +306,24 @@ def main():
     pull_request_list = get_pull_request_list(github_api, args.org, args.repo)
 
     if args.queue:
-        pr_review_queue = create_pr_review_queue(pull_request_list)
-        if pr_review_queue == []:
+        needs_reviewer, needs_changes, needs_review, needs_conflict_resolution = create_pr_review_queue(pull_request_list)
+        if (needs_reviewer == [] and
+            needs_changes == [] and
+            needs_review == [] and
+            needs_conflict_resolution == []):
             print("No pull requests found that match our criteria. Exiting.")
             sys.exit(0)
 
-        message = ("Good morning, image builders! :meow_wave: Here are a couple of PRs :pull-request: "
-                   "that could use your :eyes:\n" + "\n".join(pr_review_queue))
+        message = ("Good morning, image builders! :meow_wave:")
+        if needs_reviewer != []:
+            message += "\n\n:frog-derp: *We need a reviewer*\n  • " + "\n  • ".join(needs_reviewer)
+        if needs_changes != []:
+            message += "\n\n:changes_requested: *We need changes* \n  • " + "\n  • ".join(needs_changes)
+        if needs_review != []:
+            message += "\n\n:frog-flushed: *We need a review*\n  • " + "\n  • ".join(needs_review)
+        if needs_conflict_resolution != []:
+            message += "\n\n:expressionless-meow: *We need conflict resolution*\n  • " +  "\n  • ".join(needs_conflict_resolution)
+
         slack_notify(message, args.dry_run)
 
 
