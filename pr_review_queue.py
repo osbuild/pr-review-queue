@@ -248,46 +248,34 @@ def create_pr_review_queue(pull_request_list):
     needs_conflict_resolution = []
 
     for pull_request in pull_request_list:
-        if (pull_request["status"] == "success" and
-            pull_request["draft"] == False):
+        entry = (
+            f"*{pull_request['repo']}*:"
+            f" <{pull_request['html_url']}|{pull_request['title']}>"
+            f" (+{pull_request['additions']}/-{pull_request['deletions']})"
+        )
+
+        if pull_request['status'] == 'success' and not pull_request['draft']:
             # 1. Needs reviewer
-            if (pull_request["changes_requested"] == False and
-                pull_request["approved"] == False and
-                pull_request["requested_reviewers"] == [] and
-                pull_request["mergeable_state"] != "dirty"):
-                entry = (f"*{pull_request['repo']}*:"
-                        f" <{pull_request['html_url']}|{pull_request['title']}>"
-                        f" (+{pull_request['additions']}/-{pull_request['deletions']})")
+            if (not pull_request['changes_requested'] and
+                not pull_request['approved'] and
+                not pull_request['requested_reviewers'] and
+                pull_request['mergeable_state'] != 'dirty'):
                 needs_reviewer.append(entry)
             # 2. Needs changes
-            if (pull_request["changes_requested"] == True and
-                pull_request["mergeable_state"] != "dirty"):
-                entry = (f"*{pull_request['repo']}*:"
-                        f" <{pull_request['html_url']}|{pull_request['title']}>"
-                        f" (+{pull_request['additions']}/-{pull_request['deletions']})"
-                        f" needs changes by <https://github.com/{pull_request['login']}|{pull_request['login']}>")
-                needs_changes.append(entry)
+            elif (pull_request['changes_requested'] and
+                  pull_request['mergeable_state'] != 'dirty'):
+                needs_changes.append(f"{entry} needs changes by <https://github.com/{pull_request['login']}|{pull_request['login']}>")
             # 3. Needs review
-            if (pull_request["changes_requested"] == False and
-                pull_request["approved"] == False and
-                pull_request["requested_reviewers"] != [] and
-                pull_request["mergeable_state"] != "dirty"):
-                reviewers = []
-                for requested_reviewer in pull_request["requested_reviewers"]:
-                    reviewers.append(requested_reviewer['login'])
-                entry = (f"*{pull_request['repo']}*:"
-                        f" <{pull_request['html_url']}|{pull_request['title']}>"
-                        f" (+{pull_request['additions']}/-{pull_request['deletions']})"
-                        f" needs a review from {', '.join(reviewers)}")
-                needs_review.append(entry)
-            # 4. Needs conflict resolution
-            if (pull_request["changes_requested"] == False and
-                pull_request["mergeable_state"] == "dirty"):
-                entry = (f"*{pull_request['repo']}*:"
-                        f" <{pull_request['html_url']}|{pull_request['title']}>"
-                        f" (+{pull_request['additions']}/-{pull_request['deletions']})"
-                        f" <https://github.com/{pull_request['login']}|{pull_request['login']}>")
-                needs_conflict_resolution.append(entry)
+            elif (not pull_request['changes_requested'] and
+                  not pull_request['approved'] and
+                  pull_request['requested_reviewers'] and
+                  pull_request['mergeable_state'] != 'dirty'):
+                reviewers = ', '.join(requested_reviewer['login'] for requested_reviewer in pull_request['requested_reviewers'])
+                needs_review.append(f"{entry} needs a review from {reviewers}")
+            # 4. Needs conflict resolution or rebasing
+            elif (not pull_request['changes_requested'] and
+                  (pull_request['mergeable_state'] in {'dirty', 'behind'})):
+                needs_conflict_resolution.append(f"{entry} <https://github.com/{pull_request['login']}|{pull_request['login']}>")
 
     return needs_reviewer, needs_changes, needs_review, needs_conflict_resolution
 
