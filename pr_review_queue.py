@@ -270,7 +270,7 @@ def main():
     parser.add_argument("--github-token", help="Set a token for github.com", required=True)
     parser.add_argument("--org", help="Set an organisation on github.com", required=True)
     parser.add_argument("--repo", help="Set a repo in `--org` on github.com", required=False)
-    parser.add_argument("--queue", help="Create a review queue", default=False,
+    parser.add_argument("--queue", help="Create a review queue", default=True,
                         action=argparse.BooleanOptionalAction)
     parser.add_argument("--dry-run", help="Don't send Slack notifications", default=False,
                         action=argparse.BooleanOptionalAction)
