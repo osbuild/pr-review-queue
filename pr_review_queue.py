@@ -232,8 +232,8 @@ def get_pull_request_list(github_api, org, repo):
                     print(f" * Repository '{org}/{repo}' is archived or disabled. Skipping.")
                     continue
 
-            print(f" * Processing {pull_request.html_url}")
             pull_request_props = get_pull_request_properties(github_api, pull_request, org, repo)
+            print(f" * Processing {pull_request.html_url} {pull_request_props['state']}")
             pull_request_list.append(pull_request_props)
 
     return pull_request_list
