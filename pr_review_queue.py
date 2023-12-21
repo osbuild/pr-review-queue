@@ -76,22 +76,37 @@ def get_commit_status(github_api, repo, pull_request_details):
     Check whether the HEAD commit has passed the CI tests
     """
     head = pull_request_details["head"]
+    combined_status = "failure" # failure by default
 
+    # Check GitHub run status
+    check_run_status, state = get_check_runs(github_api, repo, head["sha"])
+    # Exit early if there are failed check runs
+    if check_run_status == "failure":
+        return combined_status, state
+
+    # Check external CI status
     status = github_api.repos.get_combined_status_for_ref(repo=repo,ref=head["sha"])
-    if status.state == "success":
+
+    if (status.state == "success" and
+        check_run_status == "success"):
         state = "🟢"
+        combined_status = "success"
     elif status.state == "failure":
         state = "🔴"
+    # For simplicity, we consider "pending" as "failure" unless there are check runs
     elif status.state == "pending":
         state = "🟠"
-        # Check if the state is not really 'pending' but if there is none
+        # Check if the state is not really 'pending' but if there is actually none
         single_status = github_api.repos.list_commit_statuses_for_ref(repo=repo,ref=head["sha"])
         if single_status == []:
-            status.state, state = get_check_runs(github_api, repo, head["sha"])
+            # The combined_status should still be a success if all check runs have passed
+            if check_run_status == "success":
+                state = "🟢"
+                combined_status = "success"
     else:
         state = status.state
 
-    return status.state, state
+    return combined_status, state
 
 
 def get_archived_repos(github_api, org):
