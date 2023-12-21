@@ -270,7 +270,7 @@ def main():
             print("No pull requests found that match our criteria. Exiting.")
             sys.exit(0)
 
-        message = ("Good morning, image builders! :meow_wave: Here are a couple of PRs :pull-request:"
+        message = ("Good morning, image builders! :meow_wave: Here are a couple of PRs :pull-request: "
                    "that could use your :eyes:\n" + "\n".join(pr_review_queue))
         slack_notify(message, args.dry_run)
 
