@@ -8,6 +8,8 @@ import argparse
 import os
 import sys
 import time
+import re
+import requests
 from slack_sdk.webhook import WebhookClient
 from ghapi.all import GhApi
 
@@ -231,6 +233,23 @@ def get_pull_request_list(github_api, org, repo):
     return pull_request_list
 
 
+def find_jira_key(title):
+    """
+    Look for a Jira key and return it
+    """
+    match = re.match(r"([A-Z]+\-\d+)([: -]+)(.+)", title)
+    return match.groups() if match else (None, None, title)
+
+
+def generate_jira_link(jira_key):
+    """
+    Generate a Jira link and verify that it exists
+    """
+    jira_url = f"https://issues.redhat.com/browse/{jira_key}"
+    response = requests.head(jira_url)
+    return f"<{jira_url}|{jira_key}>" if response.status_code == 200 else jira_key
+
+
 def create_pr_review_queue(pull_request_list):
     """
     Return a filtered list of pull requests according to these criteria:
@@ -248,11 +267,12 @@ def create_pr_review_queue(pull_request_list):
     needs_conflict_resolution = []
 
     for pull_request in pull_request_list:
-        entry = (
-            f"*{pull_request['repo']}*:"
-            f" <{pull_request['html_url']}|{pull_request['title']}>"
-            f" (+{pull_request['additions']}/-{pull_request['deletions']})"
-        )
+        jira_key, separator, title_remainder = find_jira_key(pull_request['title'])
+        entry = (f"*{pull_request['repo']}*:"
+             f" <{pull_request['html_url']}|{title_remainder}>"
+             if not jira_key else
+             f"*{pull_request['repo']}*:"
+             f" :jira-1992:{generate_jira_link(jira_key)}{separator}<{pull_request['html_url']}|{title_remainder}>")
 
         if pull_request['status'] == 'success' and not pull_request['draft']:
             # 1. Needs reviewer
