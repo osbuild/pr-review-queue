@@ -268,11 +268,15 @@ def create_pr_review_queue(pull_request_list):
 
     for pull_request in pull_request_list:
         jira_key, separator, title_remainder = find_jira_key(pull_request['title'])
-        entry = (f"*{pull_request['repo']}*:"
-             f" <{pull_request['html_url']}|{title_remainder}>"
-             if not jira_key else
-             f"*{pull_request['repo']}*:"
-             f" :jira-1992:{generate_jira_link(jira_key)}{separator}<{pull_request['html_url']}|{title_remainder}>")
+        entry = (
+            f"*{pull_request['repo']}*:"
+            f" <{pull_request['html_url']}|{title_remainder}>"
+            f" (+{pull_request['additions']}/-{pull_request['deletions']})"
+            if not jira_key else
+            f"*{pull_request['repo']}*:"
+            f" :jira-1992:{generate_jira_link(jira_key)}{separator}<{pull_request['html_url']}|{title_remainder}>"
+            f" (+{pull_request['additions']}/-{pull_request['deletions']})"
+        )
 
         if pull_request['status'] == 'success' and not pull_request['draft']:
             # 1. Needs reviewer
