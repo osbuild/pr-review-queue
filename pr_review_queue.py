@@ -8,6 +8,7 @@ import argparse
 import os
 import sys
 import time
+from datetime import datetime, timezone
 import re
 import requests
 from slack_sdk.webhook import WebhookClient
@@ -36,6 +37,18 @@ def slack_notify(message:str, dry_run: bool):
         assert response.body == "ok"
     else:
         print("No Slack webhook supplied.")
+
+
+def get_last_updated_days(date_str):
+    """
+    Return the number of days since a PR was last updated
+    """
+    # Convert Slack's date string to a datetime object
+    input_date = datetime.strptime(date_str, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    current_date = datetime.now(timezone.utc)
+    last_updated_days = (current_date - input_date).days
+
+    return last_updated_days
 
 
 def get_check_runs(github_api, repo, head):
@@ -178,6 +191,7 @@ def get_pull_request_properties(github_api, pull_request, org, repo):
     pr_properties["repo"] = repo
     pr_properties["created_at"] = pull_request.created_at
     pr_properties["updated_at"] = pull_request.updated_at
+    pr_properties["last_updated_days"] = get_last_updated_days(pull_request.updated_at)
     pr_properties["login"] = pull_request.user['login']
     pr_properties["requested_reviewers"] = pull_request_details["requested_reviewers"]
     pr_properties["additions"] = pull_request_details["additions"]
@@ -272,10 +286,12 @@ def create_pr_review_queue(pull_request_list):
             f"*{pull_request['repo']}*:"
             f" <{pull_request['html_url']}|{title_remainder}>"
             f" (+{pull_request['additions']}/-{pull_request['deletions']})"
+            f" updated {pull_request['last_updated_days']}d ago"
             if not jira_key else
             f"*{pull_request['repo']}*:"
             f" :jira-1992:{generate_jira_link(jira_key)}{separator}<{pull_request['html_url']}|{title_remainder}>"
             f" (+{pull_request['additions']}/-{pull_request['deletions']})"
+            f" updated {pull_request['last_updated_days']}d ago"
         )
 
         if pull_request['status'] == 'success' and not pull_request['draft']:
