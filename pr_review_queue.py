@@ -247,21 +247,28 @@ def get_pull_request_list(github_api, org, repo):
     return pull_request_list
 
 
-def find_jira_key(title):
-    """
-    Look for a Jira key and return it
-    """
-    match = re.match(r"([A-Z]+\-\d+)([: -]+)(.+)", title)
-    return match.groups() if match else (None, None, title)
-
-
 def generate_jira_link(jira_key):
     """
     Generate a Jira link and verify that it exists
     """
     jira_url = f"https://issues.redhat.com/browse/{jira_key}"
     response = requests.head(jira_url)
-    return f"<{jira_url}|{jira_key}>" if response.status_code == 200 else jira_key
+    return f"<{jira_url}|:jira-1992:{jira_key}>" if response.status_code == 200 else jira_key
+
+
+def find_jira_key(pr_title, pr_html_url):
+    """
+    Look for a Jira key, when found generate a hyperlink and return the new pr_title_link
+    """
+    pr_title_link = f"<{pr_html_url}|{pr_title}>"
+
+    match = re.match(r"([A-Z]+\-\d+)([: -]+)(.+)", pr_title)
+    if match:
+        jira_key, separator, title_remainder = match.groups()
+        if jira_key:
+            pr_title_link = f"{generate_jira_link(jira_key)}{separator}<{pr_html_url}|{title_remainder}>"
+
+    return pr_title_link
 
 
 def create_pr_review_queue(pull_request_list):
@@ -281,15 +288,10 @@ def create_pr_review_queue(pull_request_list):
     needs_conflict_resolution = []
 
     for pull_request in pull_request_list:
-        jira_key, separator, title_remainder = find_jira_key(pull_request['title'])
+        pr_title_link = find_jira_key(pull_request['title'], pull_request['html_url'])
         entry = (
             f"*{pull_request['repo']}*:"
-            f" <{pull_request['html_url']}|{title_remainder}>"
-            f" (+{pull_request['additions']}/-{pull_request['deletions']})"
-            f" updated {pull_request['last_updated_days']}d ago"
-            if not jira_key else
-            f"*{pull_request['repo']}*:"
-            f" :jira-1992:{generate_jira_link(jira_key)}{separator}<{pull_request['html_url']}|{title_remainder}>"
+            f" <{pr_title_link}>"
             f" (+{pull_request['additions']}/-{pull_request['deletions']})"
             f" updated {pull_request['last_updated_days']}d ago"
         )
