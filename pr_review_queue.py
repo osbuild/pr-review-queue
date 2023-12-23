@@ -290,8 +290,7 @@ def create_pr_review_queue(pull_request_list):
     for pull_request in pull_request_list:
         pr_title_link = find_jira_key(pull_request['title'], pull_request['html_url'])
         entry = (
-            f"*{pull_request['repo']}*:"
-            f" <{pr_title_link}>"
+            f"*{pull_request['repo']}*: {pr_title_link}"
             f" (+{pull_request['additions']}/-{pull_request['deletions']})"
             f" updated {pull_request['last_updated_days']}d ago"
         )
