@@ -8,11 +8,70 @@ import argparse
 import os
 import sys
 import time
+import yaml
 from datetime import datetime, timezone
 import re
 import requests
+from cryptography.fernet import Fernet
 from slack_sdk.webhook import WebhookClient
 from ghapi.all import GhApi
+
+# To only create the decrypted Slack nick tuple list once we make it a
+# global variable
+slack_nicks = []
+
+
+def decrypt(data, key):
+    """
+    Given a filename (str) and key (bytes), it decrypts the file
+    """
+    cipher_suite = Fernet(key)
+    decrypted_data = []
+
+    for k, v in data.items():
+        decrypted_value = cipher_suite.decrypt(v.encode()).decode('utf-8')
+        decrypted_data.append((k, decrypted_value))
+
+    return decrypted_data
+
+
+def decrypt_yaml(file_path, key):
+    """
+    Open a yaml file with encrypted data and return the decrypted values
+    """
+    with open(file_path, 'r') as file:
+        encrypted_data = yaml.safe_load(file)
+
+    decrypted_data = decrypt(encrypted_data, key)
+    return decrypted_data
+
+
+def init_slack_userlist():
+    """
+    Decrypt and set a global variable holding GitHub logins
+    and Slack userids
+    """
+    global slack_nicks
+    key = os.getenv('SLACK_NICKS_KEY')
+    if key:
+        yaml_file_path = "slack_nicks_encrypted.yaml"
+        slack_nicks = decrypt_yaml(yaml_file_path, key)
+    else:
+        print("No key provided to decrypt Slack nicks.")
+
+
+def get_slack_userid(github_login):
+    """
+    Return the unencrypted Slack userid
+    """
+    global slack_nicks
+    username = f"<https://github.com/{github_login}|@{github_login}>"
+    if slack_nicks:
+        for github_username, slack_userid in slack_nicks:
+            if github_username == github_login:
+                username = f"<@{slack_userid}>"
+
+    return username
 
 
 def slack_notify(message:str, dry_run: bool):
@@ -192,7 +251,7 @@ def get_pull_request_properties(github_api, pull_request, org, repo):
     pr_properties["created_at"] = pull_request.created_at
     pr_properties["updated_at"] = pull_request.updated_at
     pr_properties["last_updated_days"] = get_last_updated_days(pull_request.updated_at)
-    pr_properties["login"] = pull_request.user['login']
+    pr_properties["login"] = get_slack_userid(pull_request.user['login'])
     pr_properties["requested_reviewers"] = pull_request_details["requested_reviewers"]
     pr_properties["additions"] = pull_request_details["additions"]
     pr_properties["deletions"] = pull_request_details["deletions"]
@@ -305,18 +364,18 @@ def create_pr_review_queue(pull_request_list):
             # 2. Needs changes
             elif (pull_request['changes_requested'] and
                   pull_request['mergeable_state'] != 'dirty'):
-                needs_changes.append(f"{entry} needs changes by <https://github.com/{pull_request['login']}|{pull_request['login']}>")
+                needs_changes.append(f"{entry} needs changes by {pull_request['login']}")
             # 3. Needs review
             elif (not pull_request['changes_requested'] and
                   not pull_request['approved'] and
                   pull_request['requested_reviewers'] and
                   pull_request['mergeable_state'] != 'dirty'):
-                reviewers = ', '.join(requested_reviewer['login'] for requested_reviewer in pull_request['requested_reviewers'])
-                needs_review.append(f"{entry} needs a review from {reviewers}")
+                reviewers = ', '.join(get_slack_userid(requested_reviewer['login']) for requested_reviewer in pull_request['requested_reviewers'])
+                needs_review.append(f"{entry} {reviewers}")
             # 4. Needs conflict resolution or rebasing
             elif (not pull_request['changes_requested'] and
                   (pull_request['mergeable_state'] in {'dirty', 'behind'})):
-                needs_conflict_resolution.append(f"{entry} <https://github.com/{pull_request['login']}|{pull_request['login']}>")
+                needs_conflict_resolution.append(f"{entry} {pull_request['login']}")
 
     return needs_reviewer, needs_changes, needs_review, needs_conflict_resolution
 
@@ -336,6 +395,7 @@ def main():
     github_api = GhApi(owner=args.org, token=args.github_token)
 
     pull_request_list = get_pull_request_list(github_api, args.org, args.repo)
+    init_slack_userlist()
 
     if args.queue:
         needs_reviewer, needs_changes, needs_review, needs_conflict_resolution = create_pr_review_queue(pull_request_list)
