@@ -5,6 +5,12 @@ on:
   workflow_dispatch:
   schedule:
     - cron: '0 0 * * 0'
+  push:
+    paths:
+    - 'Dockerfile'
+  pull_request:
+    paths:
+    - 'Dockerfile'
 
 jobs:
   build-and-publish:
