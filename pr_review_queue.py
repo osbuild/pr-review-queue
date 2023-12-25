@@ -84,7 +84,11 @@ def slack_notify(message:str, dry_run: bool):
     github_run_id = os.getenv('GITHUB_RUN_ID')
     github_url = f"{github_server_url}/{github_repository}/actions/runs/{github_run_id}"
 
-    print(message)
+    # Only print the entire message outside of GitHub Actions to avoid
+    # leaking Slack userids
+    if not github_run_id:
+        print(message)
+
     if dry_run:
         print("This is just a dry run, not sending Slack notifications.")
         sys.exit(0)
