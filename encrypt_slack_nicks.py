@@ -23,7 +23,7 @@ def encrypt_values(data, key):
     encrypted_data = {}
 
     for k, v in data.items():
-        encrypted_value = cipher_suite.encrypt(v.encode()).decode('utf-8')
+        encrypted_value = cipher_suite.encrypt(f"{v}".encode()).decode('utf-8')
         encrypted_data[k] = encrypted_value
 
     return encrypted_data
@@ -33,7 +33,7 @@ def decrypt_values(data, key):
     decrypted_data = {}
 
     for k, v in data.items():
-        decrypted_value = cipher_suite.decrypt(v.encode()).decode('utf-8')
+        decrypted_value = cipher_suite.decrypt(f"{v}".encode()).decode('utf-8')
         decrypted_data[k] = decrypted_value
 
     return decrypted_data
