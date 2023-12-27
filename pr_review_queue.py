@@ -73,6 +73,20 @@ def get_slack_userid(github_login):
 
     return username
 
+def mask_slack_userids(message):
+    """
+    Revert the slack userids for debug output to github link
+    :param message: the message to be masked
+    :return: the same as message but without slack userids
+    """
+    global slack_nicks
+    ret = message
+    if slack_nicks:
+        for github_username, slack_userid in slack_nicks:
+            username = f"<https://github.com/{github_username}|@{github_username}>"
+            ret = ret.replace(f"<@{slack_userid}>", username)
+        return ret
+    return "no valid slack_nicks - masking full message"
 
 def slack_notify(message:str, dry_run: bool):
     """
@@ -86,7 +100,10 @@ def slack_notify(message:str, dry_run: bool):
 
     # Only print the entire message outside of GitHub Actions to avoid
     # leaking Slack userids
-    if not github_run_id:
+    print("--- Message ---")
+    if github_run_id:
+        print(mask_slack_userids(message))
+    else:
         print(message)
 
     if dry_run:
