@@ -21,7 +21,7 @@ jobs:
       packages: write
     steps:
       - name: Check out the repo
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
       - name: Build container
         run: podman build -t ghcr.io/${{ github.repository }}:latest .
