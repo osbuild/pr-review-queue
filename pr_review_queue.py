@@ -140,8 +140,11 @@ def get_check_runs(github_api, repo, head):
     total_count = check_runs["total_count"]
     successful_runs = 0
 
+    # Both successful and skipped runs count as success
     for run in runs:
-        if run['status'] == "completed" and run['conclusion'] == "success":
+        if (run['status'] == "completed" and
+            (run['conclusion'] == "success" or
+             run['conclusion'] == "skipped")):
             successful_runs += 1
 
     if successful_runs == total_count:
