@@ -415,8 +415,8 @@ def main():
 
     github_api = GhApi(owner=args.org, token=args.github_token)
 
-    pull_request_list = get_pull_request_list(github_api, args.org, args.repo)
     init_slack_userlist()
+    pull_request_list = get_pull_request_list(github_api, args.org, args.repo)
 
     if args.queue:
         needs_reviewer, needs_changes, needs_review, needs_conflict_resolution = create_pr_review_queue(pull_request_list)
