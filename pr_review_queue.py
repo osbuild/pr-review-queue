@@ -20,6 +20,16 @@ from ghapi.all import GhApi
 # global variable
 slack_nicks = []
 
+# Using Slack format
+slack_format = True
+
+def format_link(text, link):
+    global slack_format
+
+    if slack_format:
+        return f"<{link}|{text}>"
+    else:
+        return f"[{text}]({link})"
 
 def decrypt(data, key):
     """
@@ -65,7 +75,7 @@ def get_slack_userid(github_login):
     Return the unencrypted Slack userid
     """
     global slack_nicks
-    username = f"<https://github.com/{github_login}|@{github_login}>"
+    username = format_link(f"@{github_login}", f"https://github.com/{github_login}")
     if slack_nicks:
         for github_username, slack_userid in slack_nicks:
             if github_username == github_login:
@@ -83,7 +93,7 @@ def mask_slack_userids(message):
     ret = message
     if slack_nicks:
         for github_username, slack_userid in slack_nicks:
-            username = f"<https://github.com/{github_username}|@{github_username}>"
+            username = format_link(f"@{github_username}", f"https://github.com/{github_username}")
             ret = ret.replace(f"<@{slack_userid}>", username)
         return ret
     return "no valid slack_nicks - masking full message"
@@ -351,13 +361,13 @@ def find_jira_key(pr_title, pr_html_url):
     """
     Look for a Jira key, when found generate a hyperlink and return the new pr_title_link
     """
-    pr_title_link = f"<{pr_html_url}|{pr_title}>"
+    pr_title_link = format_link(pr_title, pr_html_url)
 
     match = re.match(r"([A-Z]+\-\d+)([: -]+)(.+)", pr_title)
     if match:
         jira_key, separator, title_remainder = match.groups()
         if jira_key:
-            pr_title_link = f"{generate_jira_link(jira_key)}{separator}<{pr_html_url}|{title_remainder}>"
+            pr_title_link = f"{generate_jira_link(jira_key)}{separator}{format_link(title_remainder, pr_html_url)}"
 
     return pr_title_link
 
@@ -419,9 +429,14 @@ def main():
     parser.add_argument("--repo", help="Set a repo in `--org` on github.com", required=False)
     parser.add_argument("--queue", help="Create a review queue", default=True,
                         action=argparse.BooleanOptionalAction)
+    parser.add_argument("--slack-format", help="Generate slack format, otherwise use markdown", default=True,
+                        action=argparse.BooleanOptionalAction)
     parser.add_argument("--dry-run", help="Don't send Slack notifications", default=False,
                         action=argparse.BooleanOptionalAction)
     args = parser.parse_args()
+
+    global slack_format
+    slack_format = args.slack_format
 
     github_api = GhApi(owner=args.org, token=args.github_token)
 
@@ -437,15 +452,26 @@ def main():
             print("No pull requests found that match our criteria. Exiting.")
             sys.exit(0)
 
-        message = ("Good morning, image builders! :meow_wave:")
-        if needs_reviewer != []:
-            message += "\n\n:frog-derp: *We need a reviewer*\n  • " + "\n  • ".join(needs_reviewer)
-        if needs_changes != []:
-            message += "\n\n:changes_requested: *We need changes*\n  • " + "\n  • ".join(needs_changes)
-        if needs_review != []:
-            message += "\n\n:frog-flushed: *We need a review*\n  • " + "\n  • ".join(needs_review)
-        if needs_conflict_resolution != []:
-            message += "\n\n:expressionless-meow: *Update required*\n  • " +  "\n  • ".join(needs_conflict_resolution)
+        if slack_format:
+            message = ("Good morning, image builders! :meow_wave:")
+            if needs_reviewer != []:
+                message += "\n\n:frog-derp: *We need a reviewer*\n  • " + "\n  • ".join(needs_reviewer)
+            if needs_changes != []:
+                message += "\n\n:changes_requested: *We need changes*\n  • " + "\n  • ".join(needs_changes)
+            if needs_review != []:
+                message += "\n\n:frog-flushed: *We need a review*\n  • " + "\n  • ".join(needs_review)
+            if needs_conflict_resolution != []:
+                message += "\n\n:expressionless-meow: *Update required*\n  • " +  "\n  • ".join(needs_conflict_resolution)
+        else:
+            message = ("Good morning team!")
+            if needs_reviewer != []:
+                message += "\n\n**We need a reviewer**\n  * " + "\n  * ".join(needs_reviewer)
+            if needs_changes != []:
+                message += "\n\n**We need changes**\n  * " + "\n  * ".join(needs_changes)
+            if needs_review != []:
+                message += "\n\n**We need a review**\n  * " + "\n  * ".join(needs_review)
+            if needs_conflict_resolution != []:
+                message += "\n\n**Update required**\n  * " +  "\n  * ".join(needs_conflict_resolution)
 
         slack_notify(message, args.dry_run)
 
