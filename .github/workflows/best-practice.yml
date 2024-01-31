@@ -1,0 +1,42 @@
+name: "Best practice test"
+
+on:
+- pull_request_target
+
+jobs:
+  jira-issue:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: "Clone Repository"
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+      - run: | # SMELL: this is a bit stupid, but apparently git rev-list needs it?
+          git checkout main
+          git checkout readme
+      - name: PR title contains Jira ticket
+        run: if [ -z $(grep -Eo "[A-Z][A-Z0-9]+-[0-9]+" <<< "${{ github.event.pull_request.title }}") ]; then echo "PR title should contain a Jira."; else echo "Well done!"; fi
+        shell: bash
+      - name: Commits contain Jira ticket
+        run: |
+          while read line; do
+            if [ -z $(grep -Eo "[A-Z][A-Z0-9]+-[0-9]+" <<< "$line") ] && [ -n "$line" ]; then
+              echo "Commit message '$line' should contain a Jira."
+            fi
+          done <<< $(git rev-list main..readme --format="%s: %b" --no-commit-header)
+        shell: bash
+      - name: PR description is not empty (blocking)
+        run: if [ -z "${{ github.event.pull_request.body}}" ]; then echo "The PR needs a non-empty description."; exit 1; else echo "Well done!";  fi
+      - name: Add 'best practice' label on success
+        shell: bash
+        if: success()
+        run: |
+          curl -sSL \
+          -H "Authorization: Bearer ${{ secrets.MY_GITHUB_TOKEN }}" \
+          -H "X-GitHub-Api-Version: 2022-11-28" \
+          -X POST \
+          -H "Content-Type: application/json" \
+          -d "{\"labels\":[\"best-practice\"]}" \
+          "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/issues/${{ github.event.pull_request.number }}/labels"
