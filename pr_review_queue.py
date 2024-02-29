@@ -445,8 +445,8 @@ def main():
             print("No pull requests found that match our criteria. Exiting.")
             sys.exit(0)
 
+        message = ("Good morning everyone!")
         if slack_format:
-            message = ("Good morning, image builders! :meow_wave:")
             if needs_reviewer != []:
                 message += "\n\n:frog-derp: *We need a reviewer*\n  • " + "\n  • ".join(needs_reviewer)
             if needs_changes != []:
@@ -456,7 +456,6 @@ def main():
             if needs_conflict_resolution != []:
                 message += "\n\n:expressionless-meow: *Update required*\n  • " +  "\n  • ".join(needs_conflict_resolution)
         else:
-            message = ("Good morning team!")
             if needs_reviewer != []:
                 message += "\n\n**We need a reviewer**\n  * " + "\n  * ".join(needs_reviewer)
             if needs_changes != []:
