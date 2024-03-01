@@ -197,7 +197,15 @@ def get_commit_status(github_api, repo, pull_request_details):
         state = "🟠"
         # Check if the state is not really 'pending' but if there is actually none
         single_status = github_api.repos.list_commit_statuses_for_ref(repo=repo,ref=head["sha"])
-        if single_status == []:
+        # Check if all pending status are only waiting for manual trigger
+        all_running = 0
+        for ss in status.statuses:
+            if ss.state == "pending" and ss.description == "Manual testing required":
+                continue
+            else:
+                all_running += 1
+        # If there is no status or all are waiting for manual trigger mark it as green
+        if single_status == [] or all_running == 0:
             # The combined_status should still be a success if all check runs have passed
             if check_run_status == "success":
                 state = "🟢"
@@ -407,8 +415,7 @@ def create_pr_review_queue(pull_request_list):
                 reviewers = ', '.join(get_slack_userid(requested_reviewer['login']) for requested_reviewer in pull_request['requested_reviewers'])
                 needs_review.append(f"{entry} {reviewers}")
             # 4. Needs conflict resolution or rebasing
-            elif (not pull_request['changes_requested'] and
-                  (pull_request['mergeable_state'] in {'dirty', 'behind'})):
+            elif (pull_request['mergeable_state'] in {'dirty', 'behind'}):
                 needs_conflict_resolution.append(f"{entry} {pull_request['login']}")
 
     return needs_reviewer, needs_changes, needs_review, needs_conflict_resolution
