@@ -17,8 +17,11 @@ import yaml
 from cryptography.fernet import Fernet
 from docopt import docopt
 
+DEFAULT_ENCODING = os.getenv("DEFAULT_ENCODING", "utf-8")
+
 
 def encrypt_values(data, key):
+    """Encrypt a single value"""
     cipher_suite = Fernet(key)
     encrypted_data = {}
 
@@ -28,7 +31,9 @@ def encrypt_values(data, key):
 
     return encrypted_data
 
+
 def decrypt_values(data, key):
+    """Dencrypt a single value"""
     cipher_suite = Fernet(key)
     decrypted_data = {}
 
@@ -38,33 +43,40 @@ def decrypt_values(data, key):
 
     return decrypted_data
 
+
 def encrypt_yaml(file_path, key):
-    with open(file_path, 'r') as file:
+    """Encrypt a whole yaml file"""
+    with open(file_path, 'r', encoding=DEFAULT_ENCODING) as file:
         original_data = yaml.safe_load(file)
 
     encrypted_values = encrypt_values(original_data, key)
 
     encrypted_file_path = file_path.replace('.yaml', '_encrypted.yaml')
 
-    with open(encrypted_file_path, 'w') as encrypted_file:
+    with open(encrypted_file_path, 'w', encoding=DEFAULT_ENCODING) as encrypted_file:
         yaml.dump(encrypted_values, encrypted_file, default_flow_style=False)
 
     print(f"Encryption complete. Encrypted YAML file saved at: {encrypted_file_path}")
 
+
 def decrypt_yaml(file_path, key):
-    with open(file_path, 'r') as file:
+    """Decrypt a whole yaml file"""
+    with open(file_path, 'r', encoding=DEFAULT_ENCODING) as file:
         original_data = yaml.safe_load(file)
 
     decrypted_values = decrypt_values(original_data, key)
 
     decrypted_file_path = file_path.replace('_encrypted.yaml', '.yaml')
 
-    with open(decrypted_file_path, 'w') as decrypted_file:
+    with open(decrypted_file_path, 'w', encoding=DEFAULT_ENCODING) as decrypted_file:
         yaml.dump(decrypted_values, decrypted_file, default_flow_style=False)
 
     print(f"Decryption complete. Decrypted YAML file saved at: {decrypted_file_path}")
 
+
 def main():
+    """encrypt_slack_nicks.py
+       call with --help for more info"""
     arguments = docopt(__doc__, version='0.1')
     if arguments["--generate_new_key"]:
         key = Fernet.generate_key()
@@ -80,6 +92,7 @@ def main():
         decrypted_file = "slack_nicks.yaml"
         key = os.getenv('SLACK_NICKS_KEY')
         encrypt_yaml(decrypted_file, key)
+
 
 if __name__ == "__main__":
     main()

@@ -1,16 +1,16 @@
 ---
 name: Build and Publish
 
-on:
+on:  # yamllint disable-line rule:truthy
   workflow_dispatch:
   schedule:
     - cron: '0 0 * * 0'
   push:
     paths:
-    - 'Dockerfile'
+      - 'Dockerfile'
   pull_request:
     paths:
-    - 'Dockerfile'
+      - 'Dockerfile'
 
 jobs:
   build-and-publish:
