@@ -1,12 +1,28 @@
-# Perform a dry-run no pull-requests
+# Perform a dry-run on pull-requests
 name: "PR Review Queue Dry Run"
 
-on:
+on:  # yamllint disable-line rule:truthy
   pull_request
 
 jobs:
-  weekly:
-    name: Daily PR review queue dry run
+  lint:
+    name: Run all linters
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v4
+      - name: Install prerequisites
+        run: |
+          pip install pre-commit
+          apt install aspell
+        shell: bash
+      - name: Run linters
+        run: make lint
+        shell: bash
+
+  test:
+    name: PR review queue dry run
     runs-on: ubuntu-latest
 
     container:
@@ -16,6 +32,8 @@ jobs:
       - name: Check out the repo
         uses: actions/checkout@v4
       - name: Create PR Review Queue for osbuild/osbuild
+        # yamllint disable rule:line-length
         run: |
           python3 pr_review_queue.py --github-token "${{ secrets.GITHUB_TOKEN }}" --queue --org osbuild --repo osbuild --dry-run
+        # yamllint enable rule:line-length
         shell: bash

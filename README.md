@@ -13,4 +13,3 @@ The Slack member ids are encrypted and can be decrypted or re-encrypted using th
 alternatively you can also set `GITHUB_TOKEN` as environment variable and call
 
 `python3 pr_review_queue.py --org $GITHUB_ORG --repo $GITHUB_REPO`
-

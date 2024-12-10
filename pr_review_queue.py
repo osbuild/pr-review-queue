@@ -6,30 +6,36 @@ Small bot to create a pull request review queue on Slack
 
 import argparse
 import os
+import re
 import sys
 import time
-import yaml
 from datetime import datetime, timezone
-import re
+
 import requests
+import yaml
 from cryptography.fernet import Fernet
-from slack_sdk.webhook import WebhookClient
 from ghapi.all import GhApi
+from slack_sdk.webhook import WebhookClient
 
 # To only create the decrypted Slack nick tuple list once we make it a
 # global variable
 slack_nicks = []
 
 # Using Slack format
-slack_format = True
+SLACK_FORMAT = True
+
+DEFAULT_ENCODING = os.getenv("DEFAULT_ENCODING", "utf-8")
+DEFAULT_JIRA_TIMEOUT_SEC = int(
+    os.getenv("DEFAULT_JIRA_TIMEOUT_SEC", f"{5 * 60}"))
+
 
 def format_link(text, link):
-    global slack_format
-
-    if slack_format:
+    """Format a link in slack or markdown style"""
+    if SLACK_FORMAT:
         return f"<{link}|{text}>"
-    else:
-        return f"[{text}]({link})"
+
+    return f"[{text}]({link})"
+
 
 def decrypt(data, key):
     """
@@ -49,7 +55,7 @@ def decrypt_yaml(file_path, key):
     """
     Open a yaml file with encrypted data and return the decrypted values
     """
-    with open(file_path, 'r') as file:
+    with open(file_path, 'r', encoding=DEFAULT_ENCODING) as file:
         encrypted_data = yaml.safe_load(file)
 
     decrypted_data = decrypt(encrypted_data, key)
@@ -61,6 +67,7 @@ def init_slack_userlist():
     Decrypt and set a global variable holding GitHub logins
     and Slack userids
     """
+    # pylint: disable=global-statement
     global slack_nicks
     key = os.getenv('SLACK_NICKS_KEY')
     if key:
@@ -74,7 +81,6 @@ def get_slack_userid(github_login):
     """
     Return the unencrypted Slack userid
     """
-    global slack_nicks
     username = format_link(f"@{github_login}", f"https://github.com/{github_login}")
     if slack_nicks:
         for github_username, slack_userid in slack_nicks:
@@ -83,13 +89,13 @@ def get_slack_userid(github_login):
 
     return username
 
+
 def mask_slack_userids(message):
     """
     Revert the slack userids for debug output to github link
     :param message: the message to be masked
     :return: the same as message but without slack userids
     """
-    global slack_nicks
     ret = message
     if slack_nicks:
         for github_username, slack_userid in slack_nicks:
@@ -98,7 +104,8 @@ def mask_slack_userids(message):
         return ret
     return "no valid slack_nicks - masking full message"
 
-def slack_notify(message:str, dry_run: bool):
+
+def slack_notify(message: str, dry_run: bool):
     """
     Send notifications to Image Builder's Slack channel
     """
@@ -145,7 +152,7 @@ def get_check_runs(github_api, repo, head):
     """
     Return the combined status of GitHub checks as strong and a state emoji
     """
-    check_runs = github_api.checks.list_for_ref(repo=repo,ref=head, per_page=100)
+    check_runs = github_api.checks.list_for_ref(repo=repo, ref=head, per_page=100)
     runs = check_runs["check_runs"]
     total_count = check_runs["total_count"]
     successful_runs = 0
@@ -153,8 +160,8 @@ def get_check_runs(github_api, repo, head):
     # Both successful and skipped runs count as success
     for run in runs:
         if (run['status'] == "completed" and
-            (run['conclusion'] == "success" or
-             run['conclusion'] == "skipped")):
+                (run['conclusion'] == "success" or
+                 run['conclusion'] == "skipped")):
             successful_runs += 1
 
     if successful_runs == total_count:
@@ -164,7 +171,8 @@ def get_check_runs(github_api, repo, head):
         status = "failure"
         state = "🔴"
     else:
-        print(f"Warning: something is terribly wrong: successful runs ({successful_runs}) should never be more than total runs ({total_count}).")
+        print(f"Warning: something is terribly wrong: successful runs ({successful_runs}) "
+              f"should never be more than total runs ({total_count}).")
         sys.exit(1)
 
     return status, state
@@ -175,7 +183,7 @@ def get_commit_status(github_api, repo, pull_request_details):
     Check whether the HEAD commit has passed the CI tests
     """
     head = pull_request_details["head"]
-    combined_status = "failure" # failure by default
+    combined_status = "failure"  # failure by default
 
     # Check GitHub run status
     check_run_status, state = get_check_runs(github_api, repo, head["sha"])
@@ -184,10 +192,10 @@ def get_commit_status(github_api, repo, pull_request_details):
         return combined_status, state
 
     # Check external CI status
-    status = github_api.repos.get_combined_status_for_ref(repo=repo,ref=head["sha"])
+    status = github_api.repos.get_combined_status_for_ref(repo=repo, ref=head["sha"])
 
     if (status.state == "success" and
-        check_run_status == "success"):
+            check_run_status == "success"):
         state = "🟢"
         combined_status = "success"
     elif status.state == "failure":
@@ -196,7 +204,7 @@ def get_commit_status(github_api, repo, pull_request_details):
     elif status.state == "pending":
         state = "🟠"
         # Check if the state is not really 'pending' but if there is actually none
-        single_status = github_api.repos.list_commit_statuses_for_ref(repo=repo,ref=head["sha"])
+        single_status = github_api.repos.list_commit_statuses_for_ref(repo=repo, ref=head["sha"])
         if single_status == []:
             # The combined_status should still be a success if all check runs have passed
             if check_run_status == "success":
@@ -216,17 +224,17 @@ def get_archived_repos(github_api, org):
 
     try:
         res = github_api.repos.list_for_org(org)
-    except: # pylint: disable=bare-except
+    except:  # pylint: disable=bare-except
         print(f"Couldn't get repositories for organisation {org}.")
 
     archived_repos = []
 
     if res is not None:
         for repo in res:
-            if repo["archived"] == True or repo["disabled"] == True:
+            if repo["archived"] is True or repo["disabled"] is True:
                 archived_repos.append(repo["name"])
 
-    if archived_repos != []:
+    if archived_repos:
         archived_repos_string = ", ".join(archived_repos)
         print(f"The following repositories are archived or disabled and will be ignored:\n  {archived_repos_string}")
 
@@ -242,8 +250,8 @@ def get_pull_request_details(github_api, repo, pull_request):
     for attempt in range(3):
         try:
             pull_request_details = github_api.pulls.get(repo=repo, pull_number=pull_request["number"])
-        except: # pylint: disable=bare-except
-            time.sleep(2) # avoid API blocking
+        except:  # pylint: disable=bare-except
+            time.sleep(2)  # avoid API blocking
         else:
             break
     else:
@@ -251,16 +259,16 @@ def get_pull_request_details(github_api, repo, pull_request):
 
     if pull_request_details is not None:
         return pull_request_details
-    else:
-        print("Couldn't get any pull requests details.")
-        sys.exit(1)
+
+    print("Couldn't get any pull requests details.")
+    sys.exit(1)
 
 
 def get_review_state(github_api, repo, pull_request, state):
     """
     Iterate over reviews associated with a pull requested and return True if changes have been requested
     """
-    reviews = github_api.pulls.list_reviews(repo=repo,pull_number=pull_request["number"])
+    reviews = github_api.pulls.list_reviews(repo=repo, pull_number=pull_request["number"])
     review_state = False
 
     for review in reviews:
@@ -308,20 +316,21 @@ def get_pull_request_list(github_api, org, repo):
     """
     pull_request_list = []
     res = None
+    archived_repos = []
 
     if repo:
         print(f"Fetching pull requests from one repository: {org}/{repo}")
-        query = (f"repo:{org}/{repo} type:pr is:open")
+        query = f"repo:{org}/{repo} type:pr is:open"
         entire_org = False
     else:
         print(f"Fetching pull requests from an entire organisation: {org}")
-        query = (f"org:{org} type:pr is:open")
+        query = f"org:{org} type:pr is:open"
         entire_org = True
         archived_repos = get_archived_repos(github_api, org)
 
     try:
-        res = github_api.search.issues_and_pull_requests(q=query, per_page=100, sort="updated",order="asc")
-    except Exception as e: # pylint: disable=bare-except
+        res = github_api.search.issues_and_pull_requests(q=query, per_page=100, sort="updated", order="asc")
+    except Exception as e:  # pylint: disable=broad-exception-caught
         print("Couldn't get any pull requests.", e)
 
     if res is not None:
@@ -329,9 +338,9 @@ def get_pull_request_list(github_api, org, repo):
         print(f"{len(pull_requests)} pull requests retrieved.")
 
         for pull_request in pull_requests:
-            if entire_org: # necessary when iterating over an organisation
+            if entire_org:  # necessary when iterating over an organisation
                 repo = pull_request.repository_url.split('/')[-1]
-                if archived_repos != [] and repo in archived_repos:
+                if archived_repos and repo in archived_repos:
                     print(f" * Repository '{org}/{repo}' is archived or disabled. Skipping.")
                     continue
 
@@ -347,7 +356,7 @@ def generate_jira_link(jira_key):
     Generate a Jira link and verify that it exists
     """
     jira_url = f"https://issues.redhat.com/browse/{jira_key}"
-    response = requests.head(jira_url)
+    response = requests.head(jira_url, timeout=DEFAULT_JIRA_TIMEOUT_SEC)
     return f"<{jira_url}|:jira-1992:{jira_key}>" if response.status_code == 200 else jira_key
 
 
@@ -395,7 +404,7 @@ def create_pr_review_queue(pull_request_list):
             if (not pull_request['changes_requested'] and
                 not pull_request['approved'] and
                 not pull_request['requested_reviewers'] and
-                pull_request['mergeable_state'] != 'dirty'):
+                    pull_request['mergeable_state'] != 'dirty'):
                 needs_reviewer.append(entry)
             # 2. Needs changes
             elif (pull_request['changes_requested'] and
@@ -406,7 +415,9 @@ def create_pr_review_queue(pull_request_list):
                   not pull_request['approved'] and
                   pull_request['requested_reviewers'] and
                   pull_request['mergeable_state'] != 'dirty'):
-                reviewers = ', '.join(get_slack_userid(requested_reviewer['login']) for requested_reviewer in pull_request['requested_reviewers'])
+                reviewers = ', '.join(
+                    get_slack_userid(requested_reviewer['login'])
+                    for requested_reviewer in pull_request['requested_reviewers'])
                 needs_review.append(f"{entry} {reviewers}")
             # 4. Needs conflict resolution or rebasing
             elif (not pull_request['changes_requested'] and
@@ -438,8 +449,9 @@ def main():
                         action=argparse.BooleanOptionalAction)
     args = parser.parse_args()
 
-    global slack_format
-    slack_format = args.slack_format
+    # pylint: disable=global-statement
+    global SLACK_FORMAT
+    SLACK_FORMAT = args.slack_format
 
     github_api = GhApi(owner=args.org, token=args.github_token)
 
@@ -447,34 +459,44 @@ def main():
     pull_request_list = get_pull_request_list(github_api, args.org, args.repo)
 
     if args.queue:
-        needs_reviewer, needs_changes, needs_review, needs_conflict_resolution = create_pr_review_queue(pull_request_list)
-        if (needs_reviewer == [] and
-            needs_changes == [] and
-            needs_review == [] and
-            needs_conflict_resolution == []):
+        needs_reviewer, needs_changes, needs_review, needs_conflict_resolution = create_pr_review_queue(
+            pull_request_list)
+        if (not needs_reviewer and
+                not needs_changes and
+                not needs_review and
+                not needs_conflict_resolution
+                ):
             print("No pull requests found that match our criteria. Exiting.")
             sys.exit(0)
 
-        if slack_format:
-            message = ("Good morning, image builders! :meow_wave:")
-            if needs_reviewer != []:
-                message += "\n\n:frog-derp: *We need a reviewer*\n  • " + "\n  • ".join(needs_reviewer)
-            if needs_changes != []:
-                message += "\n\n:changes_requested: *We need changes*\n  • " + "\n  • ".join(needs_changes)
-            if needs_review != []:
-                message += "\n\n:frog-flushed: *We need a review*\n  • " + "\n  • ".join(needs_review)
-            if needs_conflict_resolution != []:
-                message += "\n\n:expressionless-meow: *Update required*\n  • " +  "\n  • ".join(needs_conflict_resolution)
+        if SLACK_FORMAT:
+            message = "Good morning, image builders! :meow_wave:"
+            if needs_reviewer:
+                message += "\n\n:frog-derp: *We need a reviewer*\n  • " + \
+                           "\n  • ".join(needs_reviewer)
+            if needs_changes:
+                message += "\n\n:changes_requested: *We need changes*\n  • " + \
+                           "\n  • ".join(needs_changes)
+            if needs_review:
+                message += "\n\n:frog-flushed: *We need a review*\n  • " + \
+                           "\n  • ".join(needs_review)
+            if needs_conflict_resolution:
+                message += "\n\n:expressionless-meow: *Update required*\n  • " + \
+                           "\n  • ".join(needs_conflict_resolution)
         else:
-            message = ("Good morning team!")
-            if needs_reviewer != []:
-                message += "\n\n**We need a reviewer**\n  * " + "\n  * ".join(needs_reviewer)
-            if needs_changes != []:
-                message += "\n\n**We need changes**\n  * " + "\n  * ".join(needs_changes)
-            if needs_review != []:
-                message += "\n\n**We need a review**\n  * " + "\n  * ".join(needs_review)
-            if needs_conflict_resolution != []:
-                message += "\n\n**Update required**\n  * " +  "\n  * ".join(needs_conflict_resolution)
+            message = "Good morning team!"
+            if needs_reviewer:
+                message += "\n\n**We need a reviewer**\n  * " + \
+                           "\n  * ".join(needs_reviewer)
+            if needs_changes:
+                message += "\n\n**We need changes**\n  * " + \
+                           "\n  * ".join(needs_changes)
+            if needs_review:
+                message += "\n\n**We need a review**\n  * " + \
+                           "\n  * ".join(needs_review)
+            if needs_conflict_resolution:
+                message += "\n\n**Update required**\n  * " + \
+                           "\n  * ".join(needs_conflict_resolution)
 
         slack_notify(message, args.dry_run)
 

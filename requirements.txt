@@ -4,3 +4,4 @@ requests
 docopt
 pyyaml
 cryptography
+pre-commit
