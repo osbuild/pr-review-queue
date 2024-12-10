@@ -237,6 +237,8 @@ def get_pull_request_details(github_api, repo, pull_request):
     """
     Return a pull_request_details object
     """
+
+    pull_request_details = None
     for attempt in range(3):
         try:
             pull_request_details = github_api.pulls.get(repo=repo, pull_number=pull_request["number"])
@@ -319,8 +321,8 @@ def get_pull_request_list(github_api, org, repo):
 
     try:
         res = github_api.search.issues_and_pull_requests(q=query, per_page=100, sort="updated",order="asc")
-    except: # pylint: disable=bare-except
-        print("Couldn't get any pull requests.")
+    except Exception as e: # pylint: disable=bare-except
+        print("Couldn't get any pull requests.", e)
 
     if res is not None:
         pull_requests = res["items"]
