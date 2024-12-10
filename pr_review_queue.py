@@ -419,7 +419,15 @@ def create_pr_review_queue(pull_request_list):
 def main():
     """Create a pull request review queue"""
     parser = argparse.ArgumentParser(allow_abbrev=False)
-    parser.add_argument("--github-token", help="Set a token for github.com", required=True)
+
+    # GhApi() supports pulling the token out of the env - so if it's
+    # set - we don't need to force this in the params
+    if os.getenv("GITHUB_TOKEN") is None:
+        token_arg_required=True
+    else:
+        token_arg_required=False
+
+    parser.add_argument("--github-token", help="Set a token for github.com", required=token_arg_required)
     parser.add_argument("--org", help="Set an organisation on github.com", required=True)
     parser.add_argument("--repo", help="Set a repo in `--org` on github.com", required=False)
     parser.add_argument("--queue", help="Create a review queue", default=True,
