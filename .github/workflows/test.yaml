@@ -15,7 +15,7 @@ jobs:
       - name: Install prerequisites
         run: |
           pip install pre-commit
-          apt install aspell
+          sudo apt install aspell
         shell: bash
       - name: Run linters
         run: make lint
