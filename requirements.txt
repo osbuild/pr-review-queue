@@ -2,3 +2,5 @@ slack-sdk
 ghapi
 requests
 docopt
+pyyaml
+cryptography
