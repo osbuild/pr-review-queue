@@ -433,10 +433,10 @@ def main():
 
     # GhApi() supports pulling the token out of the env - so if it's
     # set - we don't need to force this in the params
-    if os.getenv("GITHUB_TOKEN") is None:
-        token_arg_required=True
+    if os.getenv("GITHUB_TOKEN"):
+        token_arg_required = False
     else:
-        token_arg_required=False
+        token_arg_required = True
 
     parser.add_argument("--github-token", help="Set a token for github.com", required=token_arg_required)
     parser.add_argument("--org", help="Set an organisation on github.com", required=True)
@@ -469,36 +469,42 @@ def main():
             print("No pull requests found that match our criteria. Exiting.")
             sys.exit(0)
 
-        if SLACK_FORMAT:
-            message = "Good morning, image builders! :meow_wave:"
-            if needs_reviewer:
-                message += "\n\n:frog-derp: *We need a reviewer*\n  • " + \
-                           "\n  • ".join(needs_reviewer)
-            if needs_changes:
-                message += "\n\n:changes_requested: *We need changes*\n  • " + \
-                           "\n  • ".join(needs_changes)
-            if needs_review:
-                message += "\n\n:frog-flushed: *We need a review*\n  • " + \
-                           "\n  • ".join(needs_review)
-            if needs_conflict_resolution:
-                message += "\n\n:expressionless-meow: *Update required*\n  • " + \
-                           "\n  • ".join(needs_conflict_resolution)
-        else:
-            message = "Good morning team!"
-            if needs_reviewer:
-                message += "\n\n**We need a reviewer**\n  * " + \
-                           "\n  * ".join(needs_reviewer)
-            if needs_changes:
-                message += "\n\n**We need changes**\n  * " + \
-                           "\n  * ".join(needs_changes)
-            if needs_review:
-                message += "\n\n**We need a review**\n  * " + \
-                           "\n  * ".join(needs_review)
-            if needs_conflict_resolution:
-                message += "\n\n**Update required**\n  * " + \
-                           "\n  * ".join(needs_conflict_resolution)
+        message = prepare_message(needs_changes, needs_conflict_resolution, needs_review, needs_reviewer)
 
         slack_notify(message, args.dry_run)
+
+
+def prepare_message(needs_changes, needs_conflict_resolution, needs_review, needs_reviewer):
+    """Return the message in either slack or markdown style"""
+    if SLACK_FORMAT:
+        message = "Good morning, image builders! :meow_wave:"
+        if needs_reviewer:
+            message += "\n\n:frog-derp: *We need a reviewer*\n  • " + \
+                       "\n  • ".join(needs_reviewer)
+        if needs_changes:
+            message += "\n\n:changes_requested: *We need changes*\n  • " + \
+                       "\n  • ".join(needs_changes)
+        if needs_review:
+            message += "\n\n:frog-flushed: *We need a review*\n  • " + \
+                       "\n  • ".join(needs_review)
+        if needs_conflict_resolution:
+            message += "\n\n:expressionless-meow: *Update required*\n  • " + \
+                       "\n  • ".join(needs_conflict_resolution)
+    else:
+        message = "Good morning team!"
+        if needs_reviewer:
+            message += "\n\n**We need a reviewer**\n  * " + \
+                       "\n  * ".join(needs_reviewer)
+        if needs_changes:
+            message += "\n\n**We need changes**\n  * " + \
+                       "\n  * ".join(needs_changes)
+        if needs_review:
+            message += "\n\n**We need a review**\n  * " + \
+                       "\n  * ".join(needs_review)
+        if needs_conflict_resolution:
+            message += "\n\n**Update required**\n  * " + \
+                       "\n  * ".join(needs_conflict_resolution)
+    return message
 
 
 if __name__ == "__main__":
