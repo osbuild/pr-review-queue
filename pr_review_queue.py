@@ -20,6 +20,7 @@ from slack_sdk.webhook import WebhookClient
 # To only create the decrypted Slack nick tuple list once we make it a
 # global variable
 slack_nicks = []
+ci_ignore_yaml = []
 
 # Using Slack format
 SLACK_FORMAT = True
@@ -27,6 +28,8 @@ SLACK_FORMAT = True
 DEFAULT_ENCODING = os.getenv("DEFAULT_ENCODING", "utf-8")
 DEFAULT_JIRA_TIMEOUT_SEC = int(
     os.getenv("DEFAULT_JIRA_TIMEOUT_SEC", f"{5 * 60}"))
+
+CI_IGNORE_LIST = "ci-ignore-list.yaml"
 
 
 def format_link(text, link):
@@ -148,6 +151,36 @@ def get_last_updated_days(date_str):
     return last_updated_days
 
 
+def init_ci_ignore_list():
+    """
+    Read the ci-ignore-list.yaml file and return a list of CI checks to ignore
+    """
+    # pylint: disable=global-statement
+    global ci_ignore_yaml
+    try:
+        with open(CI_IGNORE_LIST, 'r', encoding=DEFAULT_ENCODING) as file:
+            ci_ignore_yaml = yaml.safe_load(file)
+        print("The following CI checks will be ignored:")
+        for key, value in ci_ignore_yaml.items():
+            print(f" - {key}: '{value}'")
+
+    except FileNotFoundError:
+        print(f"File '{CI_IGNORE_LIST}' not found. No CI checks will be ignored.")
+
+
+def get_ci_ignore_list(repo):
+    """
+    Return a list of CI checks to ignore for a given repo
+    """
+    ci_ignore_list = []
+    if ci_ignore_yaml:
+        for repo_name, check_name in ci_ignore_yaml.items():
+            if repo_name == repo:
+                ci_ignore_list.append(check_name)
+
+    return ci_ignore_list
+
+
 def get_check_runs(github_api, repo, head):
     """
     Return the combined status of GitHub checks as strong and a state emoji
@@ -157,8 +190,14 @@ def get_check_runs(github_api, repo, head):
     total_count = check_runs["total_count"]
     successful_runs = 0
 
-    # Both successful and skipped runs count as success
+    ci_ignore_list = get_ci_ignore_list(repo)
+    # Successful, skipped and ignored runs count as success
     for run in runs:
+        # Check if the check is on the ignore list
+        if run['name'] in ci_ignore_list:
+            print(f'Ignoring this check: {run['name']}')
+            successful_runs += 1
+            continue
         if (run['status'] == "completed" and
                 (run['conclusion'] == "success" or
                  run['conclusion'] == "skipped")):
@@ -456,6 +495,7 @@ def main():
     github_api = GhApi(owner=args.org, token=args.github_token)
 
     init_slack_userlist()
+    init_ci_ignore_list()
     pull_request_list = get_pull_request_list(github_api, args.org, args.repo)
 
     if args.queue:
@@ -465,7 +505,7 @@ def main():
                 not needs_changes and
                 not needs_review and
                 not needs_conflict_resolution
-                ):
+            ):
             print("No pull requests found that match our criteria. Exiting.")
             sys.exit(0)
 
