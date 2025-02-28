@@ -183,7 +183,7 @@ def get_ci_ignore_list(repo):
 
 def get_check_runs(github_api, repo, head):
     """
-    Return the combined status of GitHub checks as strong and a state emoji
+    Return the combined status of GitHub checks as string and a state emoji
     """
     check_runs = github_api.checks.list_for_ref(repo=repo, ref=head, per_page=100)
     runs = check_runs["check_runs"]
