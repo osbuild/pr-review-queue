@@ -349,7 +349,7 @@ def get_pull_request_properties(github_api, pull_request, org, repo):
     return pr_properties
 
 
-def get_pull_request_list(github_api, org, repo):
+def get_pull_request_list(github_api, org, repo, ignored_repos=None):
     """
     Return a list of pull requests with their properties
     """
@@ -381,6 +381,9 @@ def get_pull_request_list(github_api, org, repo):
                 repo = pull_request.repository_url.split('/')[-1]
                 if archived_repos and repo in archived_repos:
                     print(f" * Repository '{org}/{repo}' is archived or disabled. Skipping.")
+                    continue
+                if ignored_repos and repo in ignored_repos:
+                    print(f" * Repository '{org}/{repo}' is in ignore list. Skipping.")
                     continue
 
             pull_request_props = get_pull_request_properties(github_api, pull_request, org, repo)
@@ -486,6 +489,8 @@ def main():
                         action=argparse.BooleanOptionalAction)
     parser.add_argument("--dry-run", help="Don't send Slack notifications", default=False,
                         action=argparse.BooleanOptionalAction)
+    parser.add_argument("--ignore-repo", help="Repository to ignore (can be specified multiple times)",
+                        action="append", default=[])
     args = parser.parse_args()
 
     # pylint: disable=global-statement
@@ -496,7 +501,7 @@ def main():
 
     init_slack_userlist()
     init_ci_ignore_list()
-    pull_request_list = get_pull_request_list(github_api, args.org, args.repo)
+    pull_request_list = get_pull_request_list(github_api, args.org, args.repo, args.ignore_repo)
 
     if args.queue:
         needs_reviewer, needs_changes, needs_review, needs_conflict_resolution = create_pr_review_queue(
