@@ -10,11 +10,12 @@ import re
 import sys
 import time
 from datetime import datetime, timezone
+from urllib.error import HTTPError, URLError
 
 import requests
 import yaml
 from cryptography.fernet import Fernet
-from ghapi.all import GhApi
+from ghapi.all import GhApi, paged
 from slack_sdk.webhook import WebhookClient
 
 # To only create the decrypted Slack nick tuple list once we make it a
@@ -24,12 +25,53 @@ ci_ignore_yaml = []
 
 # Using Slack format
 SLACK_FORMAT = True
+VERBOSE = False
 
 DEFAULT_ENCODING = os.getenv("DEFAULT_ENCODING", "utf-8")
 DEFAULT_JIRA_TIMEOUT_SEC = int(
     os.getenv("DEFAULT_JIRA_TIMEOUT_SEC", f"{5 * 60}"))
+DEFAULT_GITHUB_API_TIMEOUT_SEC = int(
+    os.getenv("GITHUB_API_TIMEOUT_SEC", "120"))
+DEFAULT_GITHUB_API_MAX_RETRIES = int(
+    os.getenv("GITHUB_API_MAX_RETRIES", "3"))
 
 CI_IGNORE_LIST = "ci-ignore-list.yaml"
+
+
+class GhApiWithRetry(GhApi):
+    """
+    GhApi subclass that adds configurable timeout and retry logic for CI stability.
+    Retries on connection timeouts, URLErrors, and transient HTTP errors (429, 502, 503, 504).
+    """
+
+    def __call__(self, path, verb=None, headers=None, route=None, query=None, data=None,
+                 timeout=None, decode=True):
+        timeout = timeout if timeout is not None else DEFAULT_GITHUB_API_TIMEOUT_SEC
+        last_exception = None
+        for attempt in range(DEFAULT_GITHUB_API_MAX_RETRIES):
+            try:
+                return super().__call__(
+                    path=path, verb=verb, headers=headers, route=route, query=query,
+                    data=data, timeout=timeout, decode=decode)
+            except URLError as e:
+                last_exception = e
+                if attempt < DEFAULT_GITHUB_API_MAX_RETRIES - 1:
+                    delay = 2 ** (attempt + 1)
+                    print(f"GitHub API connection error (attempt {attempt + 1}/{DEFAULT_GITHUB_API_MAX_RETRIES}): "
+                          f"{e.reason}. Retrying in {delay}s...")
+                    time.sleep(delay)
+                else:
+                    raise
+            except HTTPError as e:
+                last_exception = e
+                if e.code in (429, 502, 503, 504) and attempt < DEFAULT_GITHUB_API_MAX_RETRIES - 1:
+                    delay = 2 ** (attempt + 1)
+                    print(f"GitHub API HTTP {e.code} (attempt {attempt + 1}/{DEFAULT_GITHUB_API_MAX_RETRIES}). "
+                          f"Retrying in {delay}s...")
+                    time.sleep(delay)
+                else:
+                    raise
+        raise last_exception
 
 
 def format_link(text, link):
@@ -185,14 +227,21 @@ def get_check_runs(github_api, repo, head):
     """
     Return the combined status of GitHub checks as string and a state emoji
     """
-    check_runs = github_api.checks.list_for_ref(repo=repo, ref=head, per_page=100)
-    runs = check_runs["check_runs"]
-    total_count = check_runs["total_count"]
-    successful_runs = 0
+    all_runs = []
+    for page_num, page_response in enumerate(
+            paged(github_api.checks.list_for_ref, repo=repo, ref=head, per_page=100), start=1):
+        runs = page_response["check_runs"]
+        if not runs:
+            break
+        if VERBOSE:
+            print(f"Fetching check runs page {page_num} for {repo}@{head[:7]}...")
+        all_runs.extend(runs)
+    total_count = len(all_runs)
 
     ci_ignore_list = get_ci_ignore_list(repo)
+    successful_runs = 0
     # Successful, skipped and ignored runs count as success
-    for run in runs:
+    for run in all_runs:
         # Check if the check is on the ignore list
         if run['name'] in ci_ignore_list:
             print(f'Ignoring this check: {run['name']}')
@@ -259,19 +308,20 @@ def get_archived_repos(github_api, org):
     """
     Return a list of archived or disabled repositories
     """
-    res = None
-
-    try:
-        res = github_api.repos.list_for_org(org)
-    except:  # pylint: disable=bare-except
-        print(f"Couldn't get repositories for organisation {org}.")
-
     archived_repos = []
 
-    if res is not None:
-        for repo in res:
-            if repo["archived"] is True or repo["disabled"] is True:
-                archived_repos.append(repo["name"])
+    try:
+        for page_num, page in enumerate(
+                paged(github_api.repos.list_for_org, org, per_page=100), start=1):
+            if VERBOSE:
+                print(f"Fetching repos page {page_num} for org {org}...")
+            for repo in page:
+                if repo["archived"] is True or repo["disabled"] is True:
+                    archived_repos.append(repo["name"])
+            if len(page) < 100:  # Last page
+                break
+    except:  # pylint: disable=bare-except
+        print(f"Couldn't get repositories for organisation {org}.")
 
     if archived_repos:
         archived_repos_string = ", ".join(archived_repos)
@@ -307,15 +357,17 @@ def get_review_state(github_api, repo, pull_request, state):
     """
     Iterate over reviews associated with a pull requested and return True if changes have been requested
     """
-    reviews = github_api.pulls.list_reviews(repo=repo, pull_number=pull_request["number"])
-    review_state = False
-
-    for review in reviews:
-        if review["state"] == state:
-            review_state = True
-            continue
-
-    return review_state
+    for page_num, page in enumerate(
+            paged(github_api.pulls.list_reviews, repo=repo,
+                  pull_number=pull_request["number"], per_page=100), start=1):
+        if VERBOSE:
+            print(f"Fetching reviews page {page_num} for PR #{pull_request['number']} (checking {state})...")
+        for review in page:
+            if review["state"] == state:
+                return True
+        if len(page) < 100:
+            break
+    return False
 
 
 def get_pull_request_properties(github_api, pull_request, org, repo):
@@ -354,7 +406,6 @@ def get_pull_request_list(github_api, org, repo, ignored_repos=None):
     Return a list of pull requests with their properties
     """
     pull_request_list = []
-    res = None
     archived_repos = []
 
     if repo:
@@ -367,27 +418,42 @@ def get_pull_request_list(github_api, org, repo, ignored_repos=None):
         entire_org = True
         archived_repos = get_archived_repos(github_api, org)
 
+    pull_requests = []
     try:
-        res = github_api.search.issues_and_pull_requests(q=query, per_page=100, sort="updated", order="asc")
+        for page_num, page_response in enumerate(
+                paged(github_api.search.issues_and_pull_requests, q=query, per_page=100,
+                      sort="updated", order="asc"), start=1):
+            items = page_response.get("items", [])
+            if not items:
+                break
+            print(f"Fetching pull requests page {page_num}...")
+            pull_requests.extend(items)
+            if len(items) < 100:
+                break
     except Exception as e:  # pylint: disable=broad-exception-caught
         print("Couldn't get any pull requests.", e)
 
-    if res is not None:
-        pull_requests = res["items"]
+    if pull_requests:
         print(f"{len(pull_requests)} pull requests retrieved.")
 
+        skipped_archived_printed = set()
+        skipped_ignored_printed = set()
         for pull_request in pull_requests:
             if entire_org:  # necessary when iterating over an organisation
                 repo = pull_request.repository_url.split('/')[-1]
                 if archived_repos and repo in archived_repos:
-                    print(f" * Repository '{org}/{repo}' is archived or disabled. Skipping.")
+                    if repo not in skipped_archived_printed:
+                        print(f" * Repository '{org}/{repo}' is archived or disabled. Skipping.")
+                        skipped_archived_printed.add(repo)
                     continue
                 if ignored_repos and repo in ignored_repos:
-                    print(f" * Repository '{org}/{repo}' is in ignore list. Skipping.")
+                    if repo not in skipped_ignored_printed:
+                        print(f" * Repository '{org}/{repo}' is in ignore list. Skipping.")
+                        skipped_ignored_printed.add(repo)
                     continue
 
             pull_request_props = get_pull_request_properties(github_api, pull_request, org, repo)
-            print(f" * Processing {pull_request.html_url} {pull_request_props['state']}")
+            print(f" * Processed {pull_request.html_url} {pull_request_props['state']}")
             pull_request_list.append(pull_request_props)
 
     return pull_request_list
@@ -491,13 +557,16 @@ def main():
                         action=argparse.BooleanOptionalAction)
     parser.add_argument("--ignore-repo", help="Repository to ignore (can be specified multiple times)",
                         action="append", default=[])
+    parser.add_argument("--verbose", "-v", help="Print pagination and fetch progress", default=False,
+                        action=argparse.BooleanOptionalAction)
     args = parser.parse_args()
 
     # pylint: disable=global-statement
-    global SLACK_FORMAT
+    global SLACK_FORMAT, VERBOSE
     SLACK_FORMAT = args.slack_format
+    VERBOSE = args.verbose
 
-    github_api = GhApi(owner=args.org, token=args.github_token)
+    github_api = GhApiWithRetry(owner=args.org, token=args.github_token)
 
     init_slack_userlist()
     init_ci_ignore_list()
