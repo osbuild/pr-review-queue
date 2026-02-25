@@ -44,6 +44,7 @@ class GhApiWithRetry(GhApi):
     Retries on connection timeouts, URLErrors, and transient HTTP errors (429, 502, 503, 504).
     """
 
+    # pylint: disable=too-many-arguments
     def __call__(self, path, verb=None, headers=None, route=None, query=None, data=None,
                  timeout=None, decode=True):
         timeout = timeout if timeout is not None else DEFAULT_GITHUB_API_TIMEOUT_SEC
@@ -53,21 +54,21 @@ class GhApiWithRetry(GhApi):
                 return super().__call__(
                     path=path, verb=verb, headers=headers, route=route, query=query,
                     data=data, timeout=timeout, decode=decode)
-            except URLError as e:
-                last_exception = e
-                if attempt < DEFAULT_GITHUB_API_MAX_RETRIES - 1:
-                    delay = 2 ** (attempt + 1)
-                    print(f"GitHub API connection error (attempt {attempt + 1}/{DEFAULT_GITHUB_API_MAX_RETRIES}): "
-                          f"{e.reason}. Retrying in {delay}s...")
-                    time.sleep(delay)
-                else:
-                    raise
             except HTTPError as e:
                 last_exception = e
                 if e.code in (429, 502, 503, 504) and attempt < DEFAULT_GITHUB_API_MAX_RETRIES - 1:
                     delay = 2 ** (attempt + 1)
                     print(f"GitHub API HTTP {e.code} (attempt {attempt + 1}/{DEFAULT_GITHUB_API_MAX_RETRIES}). "
                           f"Retrying in {delay}s...")
+                    time.sleep(delay)
+                else:
+                    raise
+            except URLError as e:
+                last_exception = e
+                if attempt < DEFAULT_GITHUB_API_MAX_RETRIES - 1:
+                    delay = 2 ** (attempt + 1)
+                    print(f"GitHub API connection error (attempt {attempt + 1}/{DEFAULT_GITHUB_API_MAX_RETRIES}): "
+                          f"{e.reason}. Retrying in {delay}s...")
                     time.sleep(delay)
                 else:
                     raise
@@ -401,6 +402,44 @@ def get_pull_request_properties(github_api, pull_request, org, repo):
     return pr_properties
 
 
+def _skip_pr_if_archived_or_ignored(repo, org, archived_repos, ignored_repos,
+                                    skipped_archived_printed, skipped_ignored_printed):
+    """
+    Return True if PR from repo should be skipped. Prints skip reason once per repo.
+    """
+    if archived_repos and repo in archived_repos:
+        if repo not in skipped_archived_printed:
+            print(f" * Repository '{org}/{repo}' is archived or disabled. Skipping.")
+            skipped_archived_printed.add(repo)
+        return True
+    if ignored_repos and repo in ignored_repos:
+        if repo not in skipped_ignored_printed:
+            print(f" * Repository '{org}/{repo}' is in ignore list. Skipping.")
+            skipped_ignored_printed.add(repo)
+        return True
+    return False
+
+
+def _fetch_pull_requests_from_search(github_api, query):
+    """Fetch all pull requests from GitHub search API with pagination."""
+    pull_requests = []
+    try:
+        for page_num, page_response in enumerate(
+                paged(github_api.search.issues_and_pull_requests, q=query, per_page=100,
+                      sort="updated", order="asc"), start=1):
+            items = page_response.get("items", [])
+            if not items:
+                break
+            if VERBOSE:
+                print(f"Fetching pull requests page {page_num}...")
+            pull_requests.extend(items)
+            if len(items) < 100:
+                break
+    except Exception as e:  # pylint: disable=broad-exception-caught
+        print("Couldn't get any pull requests.", e)
+    return pull_requests
+
+
 def get_pull_request_list(github_api, org, repo, ignored_repos=None):
     """
     Return a list of pull requests with their properties
@@ -418,20 +457,7 @@ def get_pull_request_list(github_api, org, repo, ignored_repos=None):
         entire_org = True
         archived_repos = get_archived_repos(github_api, org)
 
-    pull_requests = []
-    try:
-        for page_num, page_response in enumerate(
-                paged(github_api.search.issues_and_pull_requests, q=query, per_page=100,
-                      sort="updated", order="asc"), start=1):
-            items = page_response.get("items", [])
-            if not items:
-                break
-            print(f"Fetching pull requests page {page_num}...")
-            pull_requests.extend(items)
-            if len(items) < 100:
-                break
-    except Exception as e:  # pylint: disable=broad-exception-caught
-        print("Couldn't get any pull requests.", e)
+    pull_requests = _fetch_pull_requests_from_search(github_api, query)
 
     if pull_requests:
         print(f"{len(pull_requests)} pull requests retrieved.")
@@ -441,15 +467,8 @@ def get_pull_request_list(github_api, org, repo, ignored_repos=None):
         for pull_request in pull_requests:
             if entire_org:  # necessary when iterating over an organisation
                 repo = pull_request.repository_url.split('/')[-1]
-                if archived_repos and repo in archived_repos:
-                    if repo not in skipped_archived_printed:
-                        print(f" * Repository '{org}/{repo}' is archived or disabled. Skipping.")
-                        skipped_archived_printed.add(repo)
-                    continue
-                if ignored_repos and repo in ignored_repos:
-                    if repo not in skipped_ignored_printed:
-                        print(f" * Repository '{org}/{repo}' is in ignore list. Skipping.")
-                        skipped_ignored_printed.add(repo)
+                if _skip_pr_if_archived_or_ignored(repo, org, archived_repos, ignored_repos or [],
+                                                   skipped_archived_printed, skipped_ignored_printed):
                     continue
 
             pull_request_props = get_pull_request_properties(github_api, pull_request, org, repo)
