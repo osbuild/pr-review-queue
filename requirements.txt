@@ -1,5 +1,5 @@
 slack-sdk
-ghapi
+ghapi>=1.0.6
 requests
 docopt
 pyyaml

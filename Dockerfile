@@ -5,4 +5,5 @@ RUN dnf -y install --setopt=install_weak_deps=False \
   python3-pyyaml python3-cryptography && \
   dnf clean all
 
-RUN pip install ghapi
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
