@@ -46,14 +46,14 @@ class GhApiWithRetry(GhApi):
 
     # pylint: disable=too-many-arguments
     def __call__(self, path, verb=None, headers=None, route=None, query=None, data=None,
-                 timeout=None, decode=True):
+                 timeout=None):
         timeout = timeout if timeout is not None else DEFAULT_GITHUB_API_TIMEOUT_SEC
         last_exception = None
         for attempt in range(DEFAULT_GITHUB_API_MAX_RETRIES):
             try:
                 return super().__call__(
                     path=path, verb=verb, headers=headers, route=route, query=query,
-                    data=data, timeout=timeout, decode=decode)
+                    data=data, timeout=timeout)
             except HTTPError as e:
                 last_exception = e
                 if e.code in (429, 502, 503, 504) and attempt < DEFAULT_GITHUB_API_MAX_RETRIES - 1:
